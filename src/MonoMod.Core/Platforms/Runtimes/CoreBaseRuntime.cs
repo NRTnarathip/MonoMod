@@ -62,7 +62,7 @@ namespace MonoMod.Core.Platforms.Runtimes
         {
             System = system;
 
-            if (PlatformDetection.Architecture == ArchitectureKind.x86_64 &&
+            if ((PlatformDetection.Architecture == ArchitectureKind.x86_64 || PlatformDetection.Architecture == ArchitectureKind.Arm64) &&
                 system.DefaultAbi is { } abi)
             {
                 AbiCore = AbiForCoreFx45X64(abi);

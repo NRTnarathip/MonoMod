@@ -10,6 +10,7 @@ using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using static MonoMod.Core.Interop.OSX;
 
@@ -28,6 +29,15 @@ namespace MonoMod.Core.Platforms.Systems
             if (PlatformDetection.Architecture == ArchitectureKind.x86_64)
             {
                 // As best I can find (Apple docs are worthless) MacOS uses SystemV on x64
+                DefaultAbi = new Abi(
+                    new[] { SpecialArgumentKind.ReturnBuffer, SpecialArgumentKind.ThisPointer, SpecialArgumentKind.UserArguments },
+                    SystemVABI.ClassifyAMD64,
+                    true
+                );
+            }
+            else if (PlatformDetection.Architecture == ArchitectureKind.Arm64)
+            {
+                // TODO: Make an actual arm abi
                 DefaultAbi = new Abi(
                     new[] { SpecialArgumentKind.ReturnBuffer, SpecialArgumentKind.ThisPointer, SpecialArgumentKind.UserArguments },
                     SystemVABI.ClassifyAMD64,
@@ -134,20 +144,31 @@ namespace MonoMod.Core.Platforms.Systems
             }
 
             // We know know what protections the target memory region has, so we can decide on a course of action.
+            
+            // If we're on ARM and the memory is both exec and write, then it must have been mapped with MAP_JIT and needs
+            // to be copied with pthread_jit_write_protect_np disabled
+            if (PlatformDetection.Architecture == ArchitectureKind.Arm64 && memIsExec && memIsWrite) {
+                var target = new Span<byte>((void*) patchTarget, data.Length);
+                _ = target.TryCopyTo(backup);
+                
+                fixed (byte* dataPtr = &data.GetPinnableReference()) {
+                    NativeHelperInstance.CopyToJitCode((IntPtr) dataPtr, patchTarget, data.Length);
+                }
+            } else {
+                if (!memIsWrite)
+                {
+                    Helpers.Assert(!crossesBoundary);
+                    // TODO: figure out if MAP_JIT is available and necessary, and use that instead when needed
+                    MakePageWritable(patchTarget);
+                }
 
-            if (!memIsWrite)
-            {
-                Helpers.Assert(!crossesBoundary);
-                // TODO: figure out if MAP_JIT is available and necessary, and use that instead when needed
-                MakePageWritable(patchTarget);
+                // at this point, we know our data to be writable
+
+                // now we copy target to backup, then data to target
+                var target = new Span<byte>((void*)patchTarget, data.Length);
+                _ = target.TryCopyTo(backup);
+                data.CopyTo(target);
             }
-
-            // at this point, we know our data to be writable
-
-            // now we copy target to backup, then data to target
-            var target = new Span<byte>((void*)patchTarget, data.Length);
-            _ = target.TryCopyTo(backup);
-            data.CopyTo(target);
 
             // if we got here when executable (either because the memory was already writable or we were able to make it writable) we need to flush the icache
             if (memIsExec)
@@ -443,30 +464,16 @@ namespace MonoMod.Core.Platforms.Systems
         {
             arch = value;
         }
-
-        private PosixExceptionHelper? lazyNativeExceptionHelper;
-        public INativeExceptionHelper? NativeExceptionHelper => lazyNativeExceptionHelper ??= CreateNativeExceptionHelper();
-
-        private static ReadOnlySpan<byte> NEHTempl => "/tmp/mm-exhelper.dylib.XXXXXX"u8;
-
-        private unsafe PosixExceptionHelper CreateNativeExceptionHelper()
+        
+        private unsafe string LoadResourceIntoTempFile(ReadOnlySpan<byte> tempTemplate, string resourceName)
         {
-            Helpers.Assert(arch is not null);
-
-            var soname = arch.Target switch
-            {
-                ArchitectureKind.x86_64 => "exhelper_macos_x86_64.dylib",
-                _ => throw new NotImplementedException($"No exception helper for current arch")
-            };
-
-            // we want to get a temp file, write our helper to it, and load it
-            var templ = ArrayPool<byte>.Shared.Rent(NEHTempl.Length + 1);
+            var templ = ArrayPool<byte>.Shared.Rent(tempTemplate.Length + 1);
             int fd;
             string fname;
             try
             {
                 templ.AsSpan().Clear();
-                NEHTempl.CopyTo(templ);
+                tempTemplate.CopyTo(templ);
 
                 fixed (byte* pTmpl = templ)
                     fd = MkSTemp(pTmpl);
@@ -475,11 +482,11 @@ namespace MonoMod.Core.Platforms.Systems
                 {
                     var lastError = OSX.Errno;
                     var ex = new Win32Exception(lastError);
-                    MMDbgLog.Error($"Could not create temp file for NativeExceptionHelper: {lastError} {ex}");
+                    MMDbgLog.Error($"Could not create temp file for: {lastError} {ex}");
                     throw ex;
                 }
 
-                fname = Encoding.UTF8.GetString(templ, 0, NEHTempl.Length);
+                fname = Encoding.UTF8.GetString(templ, 0, tempTemplate.Length);
             }
             finally
             {
@@ -490,12 +497,115 @@ namespace MonoMod.Core.Platforms.Systems
             using (var fh = new SafeFileHandle((IntPtr)fd, true))
             using (var fs = new FileStream(fh, FileAccess.Write))
             {
-                using var embedded = Assembly.GetExecutingAssembly().GetManifestResourceStream(soname);
+                using var embedded = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
                 Helpers.Assert(embedded is not null);
 
                 embedded.CopyTo(fs);
             }
+            
+            return fname;
+        }
+
+        private PosixExceptionHelper? lazyNativeExceptionHelper;
+        public INativeExceptionHelper? NativeExceptionHelper => lazyNativeExceptionHelper ??= CreateNativeExceptionHelper();
+
+        private static ReadOnlySpan<byte> NEHTempl => "/tmp/mm-exhelper.dylib.XXXXXX"u8;
+
+        private unsafe PosixExceptionHelper? CreateNativeExceptionHelper()
+        {
+            Helpers.Assert(arch is not null);
+
+            var soname = arch.Target switch
+            {
+                ArchitectureKind.x86_64 => "exhelper_macos_x86_64.dylib",
+                _ => null
+            };
+            
+            if (soname == null)
+            {
+                return null;
+            }
+
+            // we want to get a temp file, write our helper to it, and load it
+            var fname = LoadResourceIntoTempFile(NEHTempl, soname);
+            
             return PosixExceptionHelper.CreateHelper(arch, fname);
+        }
+        
+        private MacOSNativeHelper? lazyNativeHelper;
+        public MacOSNativeHelper NativeHelperInstance => lazyNativeHelper ??= CreateNativeHelper();
+        
+        private static ReadOnlySpan<byte> NHTempl => "/tmp/mm-macoshelper.dylib.XXXXXX"u8;
+        
+        private unsafe MacOSNativeHelper CreateNativeHelper() {
+            Helpers.Assert(arch is not null);
+
+            var soname = arch.Target switch
+            {
+                ArchitectureKind.Arm64 => "macos_helper_arm64.dylib",
+                _ => throw new NotImplementedException($"No native helper for current arch")
+            };
+
+            // we want to get a temp file, write our helper to it, and load it
+            var fname = LoadResourceIntoTempFile(NHTempl, soname);
+            
+            return MacOSNativeHelper.CreateHelper(fname);
+        }
+        
+        internal sealed class MacOSNativeHelper {
+            [StructLayout(LayoutKind.Sequential, Pack = 4)]
+            private struct JitHookParams {
+                public IntPtr originalJitFunc;
+                public IntPtr hookCallback;
+            }
+            
+            private readonly IntPtr jitCopyFunc;
+            private readonly IntPtr jitCompileHookParamsPtr;
+            
+            public readonly IntPtr JitCompileHookFunc;
+            public readonly IntPtr FakeJitCompileFunc;
+            
+            private MacOSNativeHelper(IntPtr jitCopyFunc, IntPtr jitCompileHookFunc, IntPtr fakeJitCompileFunc, IntPtr jitCompileHookParamsPtr) {
+                this.jitCopyFunc = jitCopyFunc;
+                this.jitCompileHookParamsPtr = jitCompileHookParamsPtr;
+                
+                JitCompileHookFunc = jitCompileHookFunc;
+                FakeJitCompileFunc = fakeJitCompileFunc;
+            }
+            
+            public static MacOSNativeHelper CreateHelper(string dylibPath) {
+                var handle = DynDll.OpenLibrary(dylibPath);
+                
+                try {
+                    var jitCopyFunc = DynDll.GetExport(handle, "copy_to_jit");
+                    var jitCompileHookFunc = DynDll.GetExport(handle, "jit_compile_hook");
+                    var fakeJitCompileFunc = DynDll.GetExport(handle, "fake_jit_compile");
+                    var jitCompileHookParamsPtr = DynDll.GetExport(handle, "GLOBAL_JIT_HOOK_PARAMS");
+                    
+                    Helpers.Assert(jitCopyFunc != IntPtr.Zero);
+                    Helpers.Assert(jitCompileHookFunc != IntPtr.Zero);
+                    Helpers.Assert(fakeJitCompileFunc != IntPtr.Zero);
+                    Helpers.Assert(jitCompileHookParamsPtr != IntPtr.Zero);
+                    
+                    return new MacOSNativeHelper(jitCopyFunc, jitCompileHookFunc, fakeJitCompileFunc, jitCompileHookParamsPtr);
+                } catch {
+                    DynDll.CloseLibrary(handle);
+                    throw;
+                }
+            }
+            
+            public unsafe void InitializeJitHook(IntPtr originalJitFunc, IntPtr hookCallback) {
+                JitHookParams jitParams;
+                jitParams.originalJitFunc = originalJitFunc;
+                jitParams.hookCallback = hookCallback;
+                
+                *(JitHookParams*) jitCompileHookParamsPtr = jitParams;
+            }
+            
+            public unsafe void CopyToJitCode(IntPtr from, IntPtr to, int length) {
+                var helperFunc = (delegate* unmanaged[Cdecl]<IntPtr, IntPtr, nint, void>) jitCopyFunc;
+                helperFunc(from, to, length);
+            }
         }
     }
 }

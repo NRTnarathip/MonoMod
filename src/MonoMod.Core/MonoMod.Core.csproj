@@ -23,6 +23,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Platforms\Architectures\x86_64\exhelper_linux_x86_64.so" LogicalName="exhelper_linux_x86_64.so" />
     <EmbeddedResource Include="Platforms\Architectures\x86_64\exhelper_macos_x86_64.dylib" LogicalName="exhelper_macos_x86_64.dylib" />
+    <EmbeddedResource Include="Platforms\Architectures\arm64\macos_helper_arm64.dylib" LogicalName="macos_helper_arm64.dylib" />
   </ItemGroup>
 
   <!-- Dependencies -->
