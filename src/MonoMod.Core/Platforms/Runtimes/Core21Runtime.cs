@@ -1,4 +1,5 @@
 ﻿using Mono.Cecil;
+using MonoMod.Core.Platforms.Systems;
 using MonoMod.Utils;
 using System;
 using System.Diagnostics.CodeAnalysis;
@@ -89,16 +90,36 @@ namespace MonoMod.Core.Platforms.Runtimes
 
             // Get the real compile method vtable slot
             var compileMethodSlot = GetVTableEntry(jit, VtableIndexICorJitCompilerCompileMethod);
-            var compileMethod = EHManagedToNative(*compileMethodSlot, out m2nHookHelper);
+            IntPtr ourCompileMethodPtr;
+            
+            if (PlatformDetection.Architecture == ArchitectureKind.Arm64 && PlatformDetection.OS == OSKind.OSX)
+            {
+                var macosNativeHelper = ((MacOSSystem) System).NativeHelperInstance;
+                
+                var ourCompileMethodDelegate = CastCompileHookToRealType(CreateCompileMethodDelegate(macosNativeHelper.FakeJitCompileFunc));
+                ourCompileMethod = ourCompileMethodDelegate; // stash it away so that it stays alive forever
+                
+                var compileMethodHookPtr = Marshal.GetFunctionPointerForDelegate(ourCompileMethodDelegate);
+                
+                // invoke our CompileMethodPtr through ICMP to ensure that the JIT has compiled any needed thunks
+                InvokeCompileMethodToPrepare(compileMethodHookPtr);
+                
+                macosNativeHelper.InitializeJitHook(*compileMethodSlot, compileMethodHookPtr);
+                ourCompileMethodPtr = macosNativeHelper.JitCompileHookFunc;
+            }
+            else
+            {
+                var compileMethod = EHManagedToNative(*compileMethodSlot, out m2nHookHelper);
 
-            // create our compileMethod delegate
-            var ourCompileMethodDelegate = CastCompileHookToRealType(CreateCompileMethodDelegate(compileMethod));
-            ourCompileMethod = ourCompileMethodDelegate; // stash it away so that it stays alive forever
+                // create our compileMethod delegate
+                var ourCompileMethodDelegate = CastCompileHookToRealType(CreateCompileMethodDelegate(compileMethod));
+                ourCompileMethod = ourCompileMethodDelegate; // stash it away so that it stays alive forever
 
-            var ourCompileMethodPtr = EHNativeToManaged(Marshal.GetFunctionPointerForDelegate(ourCompileMethodDelegate), out n2mHookHelper);
-
-            // invoke our CompileMethodPtr through ICMP to ensure that the JIT has compiled any needed thunks
-            InvokeCompileMethodToPrepare(ourCompileMethodPtr);
+                ourCompileMethodPtr = EHNativeToManaged(Marshal.GetFunctionPointerForDelegate(ourCompileMethodDelegate), out n2mHookHelper);
+                
+                // invoke our CompileMethodPtr through ICMP to ensure that the JIT has compiled any needed thunks
+                InvokeCompileMethodToPrepare(ourCompileMethodPtr);
+            }
 
             // and now we can install our method pointer as a JIT hook
             Span<byte> ptrData = stackalloc byte[sizeof(IntPtr)];
@@ -174,9 +195,12 @@ namespace MonoMod.Core.Platforms.Runtimes
                 byte** pNativeEntry,
                 uint* pNativeSizeOfCode)
             {
-
-                *pNativeEntry = null;
-                *pNativeSizeOfCode = 0;
+                // Very hacky solution, but this has already been done inside of the macos native helper so don't redo it here
+                if (!(PlatformDetection.Architecture == ArchitectureKind.Arm64 && PlatformDetection.OS == OSKind.OSX))
+                {
+                    *pNativeEntry = null;
+                    *pNativeSizeOfCode = 0;
+                }
 
                 if (jit == IntPtr.Zero)
                     return CorJitResult.CORJIT_OK;
