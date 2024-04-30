@@ -69,7 +69,7 @@ namespace MonoMod.Core.Platforms
                 ArchitectureKind.x86 => new Architectures.x86Arch(system),
                 ArchitectureKind.x86_64 => new Architectures.x86_64Arch(system),
                 ArchitectureKind.Arm => throw new NotImplementedException(),
-                ArchitectureKind.Arm64 => throw new NotImplementedException(),
+                ArchitectureKind.Arm64 => new Architectures.Arm64Arch(system),
                 var kind => throw new PlatformNotSupportedException($"Architecture kind {kind} not supported"),
             };
         }
