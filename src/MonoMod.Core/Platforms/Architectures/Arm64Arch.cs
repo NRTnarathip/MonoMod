@@ -10,11 +10,71 @@ namespace MonoMod.Core.Platforms.Architectures
 
         public ArchitectureFeature Features => ArchitectureFeature.None;
 
-        public BytePatternCollection KnownMethodThunks => new BytePatternCollection(
-            new BytePattern(new(AddressKind.Rel32, 5), mustMatchAtStart: true, 0x88, 0x77, 0x99) // Just put something random here to make the errors go away
-        );
+        private BytePatternCollection? lazyKnownMethodThunks;
+        public unsafe BytePatternCollection KnownMethodThunks => Helpers.GetOrInit(ref lazyKnownMethodThunks, &CreateKnownMethodThunks);
 
         public IAltEntryFactory AltEntryFactory => throw new NotImplementedException();
+        
+        private static BytePatternCollection CreateKnownMethodThunks()
+        {
+            const ushort An = BytePattern.SAnyValue;
+            const ushort Ad = BytePattern.SAddressValue;
+            // const byte Bn = BytePattern.BAnyValue;
+            // const byte Bd = BytePattern.BAddressValue;
+
+            // Adapted from https://github.com/MonoMod/MonoMod.Common/blob/7d2819f3b2309a3127f5ff7b1b9d91a0908eece0/RuntimeDetour/Platforms/Runtime/DetourRuntimeNETPlatform.cs#L153-L201
+            if (PlatformDetection.Runtime is RuntimeKind.Framework or RuntimeKind.CoreCLR)
+            {
+                return new BytePatternCollection(
+                    // StubPrecode
+                    // https://github.com/dotnet/runtime/blob/7830fddeead7907f6dd45f814fc3b8d49cd4b082/src/coreclr/vm/arm64/cgencpu.h#L567-L572
+                    new(new(AddressKind.Abs64), mustMatchAtStart: true,
+                        0x89, 0x00, 0x00, 0x10, // adr x9, #0x10
+                        0x2a, 0x31, 0x40, 0xa9, // ldp x10, x12, [x9]
+                        0x40, 0x01, 0x1f, 0xd6, // br x10
+                        An, An, An, An,
+                        Ad, Ad, Ad, Ad, Ad, Ad, Ad, Ad
+                    ),
+                    
+                    // NDirectImportPrecode
+                    // https://github.com/dotnet/runtime/blob/7830fddeead7907f6dd45f814fc3b8d49cd4b082/src/coreclr/vm/arm64/cgencpu.h#L628-L633
+                    new(new(AddressKind.Abs64), mustMatchAtStart: true,
+                        0x8b, 0x00, 0x00, 0x10, // adr x11, #0x10
+                        0x6a, 0x31, 0x40, 0xa9, // ldp x10, x12, [x11]
+                        0x40, 0x01, 0x1f, 0xd6, // br x10
+                        An, An, An, An,
+                        Ad, Ad, Ad, Ad, Ad, Ad, Ad, Ad
+                    ),
+                    
+                    // FixupPrecode
+                    // https://github.com/dotnet/runtime/blob/7830fddeead7907f6dd45f814fc3b8d49cd4b082/src/coreclr/vm/arm64/cgencpu.h#L666-L672
+                    new(new(AddressKind.Abs64), mustMatchAtStart: true,
+                        0x0c, 0x00, 0x00, 0x10, // adr x12, #0x00
+                        0x6b, 0x00, 0x00, 0x58, // ldr x11, #0x0c
+                        0x60, 0x01, 0x1f, 0xd6, // br x11
+                        An, An, An, An,
+                        Ad, Ad, Ad, Ad, Ad, Ad, Ad, Ad
+                    ),
+                    
+                    // ThisPtrRetBufPrecode
+                    // https://github.com/dotnet/runtime/blob/4da6b9a8d55913c0ea560d63590d35dc942425be/src/coreclr/vm/arm64/stubs.cpp#L641-L647
+                    new(new(AddressKind.Abs64), mustMatchAtStart: true,
+                        0x10, 0x00, 0x00, 0x91, // mov x16, x0
+                        0x20, 0x00, 0x00, 0x91, // mov x0, x1
+                        0x01, 0x02, 0x00, 0x91, // mov x1, x16
+                        0x70, 0x00, 0x00, 0x58, // ldr x16, #0x0c
+                        0x00, 0x02, 0x1f, 0xd6, // br x16
+                        An, An, An, An,
+                        Ad, Ad, Ad, Ad, Ad, Ad, Ad, Ad
+                    )
+                );
+            }
+            else
+            {
+                // TODO: Mono
+                return new();
+            }
+        }
 
         private sealed class Abs64Kind : DetourKindBase
         {
