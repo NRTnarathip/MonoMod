@@ -34,6 +34,8 @@ namespace MonoMod.Core.Interop
                 uint* nativeSizeOfCode,
                 byte* hotCodeRW
             );
+            
+            public const int VtableIndexICorJitInfoAllocMem = 156;
 
             public new static InvokeCompileMethodPtr InvokeCompileMethodPtr => new(&InvokeCompileMethod);
 

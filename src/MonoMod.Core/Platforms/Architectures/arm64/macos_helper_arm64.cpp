@@ -3,6 +3,9 @@
 #include <pthread.h>
 #include <iostream>
 
+// Disable write protection, copy the data, renable write protection
+// This has to be done in native code because while write protection is disabled
+// we can't execute managed code
 extern "C" void copy_to_jit(void* from, void* to, size_t length)
 {
 	pthread_jit_write_protect_np(0);
@@ -47,6 +50,7 @@ struct JitCompileHookParams
 volatile JitCompileHookParams GLOBAL_JIT_HOOK_PARAMS;
 
 static thread_local int HOOK_ENTRANCY = 0;
+static thread_local AllocMemArgs LAST_JIT_MEM_ALLOC_PARAMS;
 
 struct HookEntrancyTicket
 {
@@ -61,8 +65,6 @@ struct HookEntrancyTicket
 	}
 };
 
-static thread_local AllocMemArgs LAST_JIT_MEM_ALLOC_PARAMS;
-
 extern "C" int jit_compile_hook(void* jit, void* corJitInfo, void* methodInfo, unsigned flags, uint8_t** entryAddress, uint32_t* nativeSizeOfCode)
 {
 	HookEntrancyTicket hook_entrancy_ticket;
@@ -75,6 +77,8 @@ extern "C" int jit_compile_hook(void* jit, void* corJitInfo, void* methodInfo, u
 	
 	if (HOOK_ENTRANCY == 1)
 	{
+		// Some invocations of CILJit::compileMethod already have write protection turned off, which means that we need
+		// to briefly turn it back on to execute our managed hook
 		pthread_jit_write_protect_np(1);
 		GLOBAL_JIT_HOOK_PARAMS.post_hook(corJitInfo, methodInfo, entryAddress, nativeSizeOfCode, LAST_JIT_MEM_ALLOC_PARAMS.hotCodeBlockRW);
 		pthread_jit_write_protect_np(0);
@@ -87,5 +91,8 @@ extern "C" void jit_info_alloc_mem_hook(void* corJitInfo, AllocMemArgs* args)
 {
 	GLOBAL_JIT_HOOK_PARAMS.original_alloc_mem(corJitInfo, args);
 	
-	LAST_JIT_MEM_ALLOC_PARAMS = *args;
+	if (HOOK_ENTRANCY == 1)
+	{
+		LAST_JIT_MEM_ALLOC_PARAMS = *args;
+	}
 }

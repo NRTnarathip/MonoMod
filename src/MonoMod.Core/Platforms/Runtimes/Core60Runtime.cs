@@ -84,17 +84,18 @@ namespace MonoMod.Core.Platforms.Runtimes
                 Justification = "We want to swallow exceptions here to prevent them from bubbling out of the JIT")]
             public unsafe void CompileMethodPostHook(IntPtr corJitInfo, V21.CORINFO_METHOD_INFO* methodInfo, byte** nativeEntry, uint* nativeSizeOfCode, byte* hotCodeRW)
             {
+                var lastError = MarshalEx.GetLastPInvokeError();
+                
                 try
                 {
                     if (!installedAllocHook) {
-                        var allocMemSlot = GetVTableEntry(corJitInfo, 156); // Index of allocMem in vtable
+                        var allocMemSlot = GetVTableEntry(corJitInfo, V60.VtableIndexICorJitInfoAllocMem);
                         
                         var macosNativeHelper = ((MacOSSystem) Runtime.System).NativeHelperInstance;
                         macosNativeHelper.SetOriginalJitMemAlloc(*allocMemSlot);
                         
                         var ourAllocMemPtr = macosNativeHelper.JitMemAllocHookFunc;
                         
-                        // and now we can install our method pointer as a JIT hook
                         Span<byte> ptrData = stackalloc byte[sizeof(IntPtr)];
                         MemoryMarshal.Write(ptrData, ref ourAllocMemPtr);
 
@@ -134,6 +135,10 @@ namespace MonoMod.Core.Platforms.Runtimes
                 catch
                 {
                     // eat the exception so we don't accidentally bubble up to native code
+                }
+                finally
+                {
+                    MarshalEx.SetLastPInvokeError(lastError);
                 }
             }
         }
