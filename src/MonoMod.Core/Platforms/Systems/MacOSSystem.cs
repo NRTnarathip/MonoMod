@@ -556,21 +556,22 @@ namespace MonoMod.Core.Platforms.Systems
             [StructLayout(LayoutKind.Sequential, Pack = 4)]
             private struct JitHookParams {
                 public IntPtr originalJitFunc;
-                public IntPtr hookCallback;
+                public IntPtr postHook;
+                public IntPtr originalAllocMem;
             }
             
             private readonly IntPtr jitCopyFunc;
             private readonly IntPtr jitCompileHookParamsPtr;
             
             public readonly IntPtr JitCompileHookFunc;
-            public readonly IntPtr FakeJitCompileFunc;
+            public readonly IntPtr JitMemAllocHookFunc;
             
-            private MacOSNativeHelper(IntPtr jitCopyFunc, IntPtr jitCompileHookFunc, IntPtr fakeJitCompileFunc, IntPtr jitCompileHookParamsPtr) {
+            private MacOSNativeHelper(IntPtr jitCopyFunc, IntPtr jitCompileHookFunc, IntPtr jitMemAllocHookFunc, IntPtr jitCompileHookParamsPtr) {
                 this.jitCopyFunc = jitCopyFunc;
                 this.jitCompileHookParamsPtr = jitCompileHookParamsPtr;
                 
                 JitCompileHookFunc = jitCompileHookFunc;
-                FakeJitCompileFunc = fakeJitCompileFunc;
+                JitMemAllocHookFunc = jitMemAllocHookFunc;
             }
             
             public static MacOSNativeHelper CreateHelper(string dylibPath) {
@@ -579,27 +580,31 @@ namespace MonoMod.Core.Platforms.Systems
                 try {
                     var jitCopyFunc = DynDll.GetExport(handle, "copy_to_jit");
                     var jitCompileHookFunc = DynDll.GetExport(handle, "jit_compile_hook");
-                    var fakeJitCompileFunc = DynDll.GetExport(handle, "fake_jit_compile");
+                    var jitMemAllocHookFunc = DynDll.GetExport(handle, "jit_info_alloc_mem_hook");
                     var jitCompileHookParamsPtr = DynDll.GetExport(handle, "GLOBAL_JIT_HOOK_PARAMS");
                     
                     Helpers.Assert(jitCopyFunc != IntPtr.Zero);
                     Helpers.Assert(jitCompileHookFunc != IntPtr.Zero);
-                    Helpers.Assert(fakeJitCompileFunc != IntPtr.Zero);
+                    Helpers.Assert(jitMemAllocHookFunc != IntPtr.Zero);
                     Helpers.Assert(jitCompileHookParamsPtr != IntPtr.Zero);
                     
-                    return new MacOSNativeHelper(jitCopyFunc, jitCompileHookFunc, fakeJitCompileFunc, jitCompileHookParamsPtr);
+                    return new MacOSNativeHelper(jitCopyFunc, jitCompileHookFunc, jitMemAllocHookFunc, jitCompileHookParamsPtr);
                 } catch {
                     DynDll.CloseLibrary(handle);
                     throw;
                 }
             }
             
-            public unsafe void InitializeJitHook(IntPtr originalJitFunc, IntPtr hookCallback) {
-                JitHookParams jitParams;
-                jitParams.originalJitFunc = originalJitFunc;
-                jitParams.hookCallback = hookCallback;
-                
-                *(JitHookParams*) jitCompileHookParamsPtr = jitParams;
+            public unsafe void InitializeJitHook(IntPtr originalJitFunc, IntPtr postHook) {
+                var paramsPtr = (JitHookParams*) jitCompileHookParamsPtr;
+                paramsPtr->originalJitFunc = originalJitFunc;
+                paramsPtr->postHook = postHook;
+                paramsPtr->originalAllocMem = (IntPtr) 0;
+            }
+            
+            public unsafe void SetOriginalJitMemAlloc(IntPtr funcPtr) {
+                var paramsPtr = (JitHookParams*) jitCompileHookParamsPtr;
+                paramsPtr->originalAllocMem = funcPtr;
             }
             
             public unsafe void CopyToJitCode(IntPtr from, IntPtr to, int length) {

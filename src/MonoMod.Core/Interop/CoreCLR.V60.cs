@@ -25,6 +25,15 @@ namespace MonoMod.Core.Interop
                 byte** nativeEntry,
                 uint* nativeSizeOfCode
             );
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void CompileMethodPostHookDelegate(
+                IntPtr corJitInfo, // ICorJitInfo*
+                CORINFO_METHOD_INFO* methodInfo, // CORINFO_METHOD_INFO*
+                byte** nativeEntry,
+                uint* nativeSizeOfCode,
+                byte* hotCodeRW
+            );
 
             public new static InvokeCompileMethodPtr InvokeCompileMethodPtr => new(&InvokeCompileMethod);
 
