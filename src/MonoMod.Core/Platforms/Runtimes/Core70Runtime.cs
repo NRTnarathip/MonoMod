@@ -260,7 +260,7 @@ namespace MonoMod.Core.Platforms.Runtimes
             vtbl[VtableIndexICorJitInfoAllocMem] = EHNativeToManaged(Marshal.GetFunctionPointerForDelegate(allocMemDelegate), out n2mAllocMemHelper);
         }
 
-        protected virtual int VtableIndexICorJitInfoAllocMem => V70.ICorJitInfoVtable.AllocMemIndex;
+        protected override int VtableIndexICorJitInfoAllocMem => V70.ICorJitInfoVtable.AllocMemIndex;
         protected virtual int ICorJitInfoFullVtableCount => V70.ICorJitInfoVtable.TotalVtableCount;
 
         protected virtual InvokeAllocMemPtr InvokeAllocMemPtr => V70.InvokeAllocMemPtr;

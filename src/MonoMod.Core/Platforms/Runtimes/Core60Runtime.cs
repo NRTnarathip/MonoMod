@@ -28,6 +28,8 @@ namespace MonoMod.Core.Platforms.Runtimes
         protected override Guid ExpectedJitVersion => JitVersionGuid;
 
         protected override InvokeCompileMethodPtr InvokeCompileMethodPtr => V60.InvokeCompileMethodPtr;
+        
+        protected virtual int VtableIndexICorJitInfoAllocMem => V60.VtableIndexICorJitInfoAllocMem;
 
         protected override Delegate CastCompileHookToRealType(Delegate del)
             => del.CastDelegate<V60.CompileMethodDelegate>();
@@ -89,7 +91,7 @@ namespace MonoMod.Core.Platforms.Runtimes
                 try
                 {
                     if (!installedAllocHook) {
-                        var allocMemSlot = GetVTableEntry(corJitInfo, V60.VtableIndexICorJitInfoAllocMem);
+                        var allocMemSlot = GetVTableEntry(corJitInfo, Runtime.VtableIndexICorJitInfoAllocMem);
                         
                         var macosNativeHelper = ((MacOSSystem) Runtime.System).NativeHelperInstance;
                         macosNativeHelper.SetOriginalJitMemAlloc(*allocMemSlot);
