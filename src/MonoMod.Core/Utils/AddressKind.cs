@@ -51,6 +51,8 @@ namespace MonoMod.Core.Utils
         /// to a word-sized indirection cell which contains the actual target.
         /// </summary>
         Indirect = 0b1000,
+        
+        Literal = 0b10000,
     }
 
     /// <summary>
@@ -75,6 +77,8 @@ namespace MonoMod.Core.Utils
         /// The <see cref="AddressKind"/> flag indicating that the kind is indirect.
         /// </summary>
         public const AddressKind IsIndirectField = (AddressKind)0b1000;
+        
+        public const AddressKind IsLiteralField = (AddressKind)0b10000;
 
         /// <summary>
         /// Gets whether or not this <see cref="AddressKind"/> is relative.
@@ -126,6 +130,10 @@ namespace MonoMod.Core.Utils
         [MethodImpl(MethodImplOptionsEx.AggressiveInlining)]
         public static bool IsIndirect(this AddressKind value)
             => (value & IsIndirectField) != 0;
+        
+        [MethodImpl(MethodImplOptionsEx.AggressiveInlining)]
+        public static bool IsLiteral(this AddressKind value)
+            => (value & IsLiteralField) != 0;
 
         /// <summary>
         /// Validates <paramref name="value"/>, ensuring that it is a valid <see cref="AddressKind"/>.
@@ -135,7 +143,7 @@ namespace MonoMod.Core.Utils
         /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="value"/> is invalid.</exception>
         public static void Validate(this AddressKind value, [CallerArgumentExpression("value")] string argName = "")
         {
-            if ((value & ~(IsAbsoluteField | Is64BitField | IsPrecodeFixupField | IsIndirectField)) != 0)
+            if ((value & ~(IsAbsoluteField | Is64BitField | IsPrecodeFixupField | IsIndirectField | IsLiteralField)) != 0)
                 throw new ArgumentOutOfRangeException(argName);
         }
 

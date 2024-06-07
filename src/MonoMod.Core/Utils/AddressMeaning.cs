@@ -16,19 +16,22 @@ namespace MonoMod.Core.Utils
         /// Gets the offset from the match start that an address is relative to, if it is relative.
         /// </summary>
         public int RelativeToOffset { get; }
+        
+        public ulong LiteralConstant { get; }
 
         /// <summary>
         /// Constructs an <see cref="AddressMeaning"/> for the specified <see cref="AddressKind"/>.
         /// </summary>
         /// <param name="kind">The <see cref="AddressKind"/>.</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="kind"/> is invalid -OR- <paramref name="kind"/> is relative.</exception>
-        public AddressMeaning(AddressKind kind)
+        public AddressMeaning(AddressKind kind, ulong literalConstant = 0)
         {
             kind.Validate();
             if (!kind.IsAbsolute())
                 throw new ArgumentOutOfRangeException(nameof(kind));
             Kind = kind;
             RelativeToOffset = 0;
+            LiteralConstant = literalConstant;
         }
 
         /// <summary>
@@ -39,7 +42,7 @@ namespace MonoMod.Core.Utils
         /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="kind"/> is invalid
         /// -OR- <paramref name="kind"/> is absolute
         /// -OR- <paramref name="relativeOffset"/> is less than zero.</exception>
-        public AddressMeaning(AddressKind kind, int relativeOffset)
+        public AddressMeaning(AddressKind kind, int relativeOffset, ulong literalConstant = 0)
         {
             kind.Validate();
             if (!kind.IsRelative())
@@ -48,11 +51,18 @@ namespace MonoMod.Core.Utils
                 throw new ArgumentOutOfRangeException(nameof(relativeOffset));
             Kind = kind;
             RelativeToOffset = relativeOffset;
+            LiteralConstant = literalConstant;
         }
-
-        private static unsafe nint DoProcessAddress(AddressKind kind, nint basePtr, int offset, ulong address)
+        
+        private static unsafe nint DoProcessAddress(AddressKind kind, nint basePtr, int offset, ulong literalConstant, ulong address)
         {
             nint addr;
+            
+            if (kind.IsLiteral())
+            {
+                address = literalConstant;
+            }
+            
             if (kind.IsAbsolute())
             {
                 addr = (nint)address;
@@ -80,7 +90,7 @@ namespace MonoMod.Core.Utils
         /// <returns>The resolved target address.</returns>
         public nint ProcessAddress(nint basePtr, int offset, ulong address)
         {
-            return DoProcessAddress(Kind, basePtr, offset + RelativeToOffset, address);
+            return DoProcessAddress(Kind, basePtr, offset + RelativeToOffset, LiteralConstant, address);
         }
 
         /// <inheritdoc/>

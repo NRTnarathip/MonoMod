@@ -40,7 +40,7 @@ namespace MonoMod.Core.Platforms.Systems
                 // TODO: Make an actual arm abi
                 DefaultAbi = new Abi(
                     new[] { SpecialArgumentKind.ReturnBuffer, SpecialArgumentKind.ThisPointer, SpecialArgumentKind.UserArguments },
-                    SystemVABI.ClassifyAMD64,
+                    (type, isReturn) => TypeClassification.InRegister,
                     true
                 );
             }

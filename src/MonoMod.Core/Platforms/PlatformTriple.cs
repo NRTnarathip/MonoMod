@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -490,6 +491,9 @@ namespace MonoMod.Core.Platforms
             }
         }
 
+        private static object DEBUG_FILE_LOCK = new ();
+        private static bool FIRST_TIME_DEBUG_WRITE = true;
+
         private unsafe IntPtr GetNativeMethodBodyWalk(MethodBase method, bool reloadPtr)
         {
             var regenerated = false;
@@ -571,6 +575,23 @@ namespace MonoMod.Core.Platforms
                     goto ReloadFuncPtr;
                 }
             } while (true);
+            
+            // lock (DEBUG_FILE_LOCK) {
+            //     var readableLen = System.GetSizeOfReadableMemory(entry, 32);
+            //     var span = new ReadOnlySpan<byte>((void*)entry, (int)Math.Min(readableLen, 48));
+
+            //     using var file = new StreamWriter("detours_debug.txt", append: !FIRST_TIME_DEBUG_WRITE);
+                
+            //     file.WriteLine();
+            //     file.WriteLine(method.Name);
+            //     file.WriteLine(iters);
+            //     file.WriteLine(entry);
+            //     file.WriteLine(span.IsEmpty ? "00000000" : Convert.ToHexString(span));
+            //     file.WriteLine();
+                
+            //     file.Flush();
+            //     FIRST_TIME_DEBUG_WRITE = false;
+            // }
 
             return entry;
         }

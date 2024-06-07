@@ -236,3 +236,5 @@ ModelManifest.xml
 .idea/
 *.binlog
 *.dump
+
+src/MonoMod.Core/Platforms/Architectures/arm64/macos_helper_arm64.dylib.dSYM
