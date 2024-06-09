@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <pthread.h>
 #include <iostream>
+#include <thread>
 
 // Disable write protection, copy the data, renable write protection
 // This has to be done in native code because while write protection is disabled
@@ -77,11 +78,19 @@ extern "C" int jit_compile_hook(void* jit, void* corJitInfo, void* methodInfo, u
 	
 	if (HOOK_ENTRANCY == 1)
 	{
-		// Some invocations of CILJit::compileMethod already have write protection turned off, which means that we need
-		// to briefly turn it back on to execute our managed hook
-		pthread_jit_write_protect_np(1);
-		GLOBAL_JIT_HOOK_PARAMS.post_hook(corJitInfo, methodInfo, entryAddress, nativeSizeOfCode, LAST_JIT_MEM_ALLOC_PARAMS.hotCodeBlockRW);
-		pthread_jit_write_protect_np(0);
+		// Some invocations of CILJit::compileMethod already have write protection turned off, and some don't.
+		// We can't execute managed code while write protection is off, so run the managed hook in another thread to sidestep the issue.
+		
+		auto hot_code_rw = LAST_JIT_MEM_ALLOC_PARAMS.hotCodeBlockRW;
+		
+		std::thread hook_thread([=]()
+		{
+			HOOK_ENTRANCY = 1; // HOOK_ENTRANCY is thread local, so set it to 1 here so that we don't recurse.
+			
+			GLOBAL_JIT_HOOK_PARAMS.post_hook(corJitInfo, methodInfo, entryAddress, nativeSizeOfCode, hot_code_rw);
+		});
+		
+		hook_thread.join();
 	}
 	
 	return result;

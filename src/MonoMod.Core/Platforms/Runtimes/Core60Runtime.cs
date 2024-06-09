@@ -75,6 +75,7 @@ namespace MonoMod.Core.Platforms.Runtimes
             public readonly JitHookHelpersHolder JitHookHelpers;
             
             private static bool installedAllocHook;
+            private static object allocHookInstallationLock = new ();
             
             public JitHookDelegateHolder(Core60Runtime runtime)
             {
@@ -90,20 +91,23 @@ namespace MonoMod.Core.Platforms.Runtimes
                 
                 try
                 {
-                    if (!installedAllocHook) {
-                        var allocMemSlot = GetVTableEntry(corJitInfo, Runtime.VtableIndexICorJitInfoAllocMem);
-                        
-                        var macosNativeHelper = ((MacOSSystem) Runtime.System).NativeHelperInstance;
-                        macosNativeHelper.SetOriginalJitMemAlloc(*allocMemSlot);
-                        
-                        var ourAllocMemPtr = macosNativeHelper.JitMemAllocHookFunc;
-                        
-                        Span<byte> ptrData = stackalloc byte[sizeof(IntPtr)];
-                        MemoryMarshal.Write(ptrData, ref ourAllocMemPtr);
+                    // This is a race condition waiting to happen
+                    lock (allocHookInstallationLock) {
+                        if (!installedAllocHook) {
+                            var allocMemSlot = GetVTableEntry(corJitInfo, Runtime.VtableIndexICorJitInfoAllocMem);
+                            
+                            var macosNativeHelper = ((MacOSSystem) Runtime.System).NativeHelperInstance;
+                            macosNativeHelper.SetOriginalJitMemAlloc(*allocMemSlot);
+                            
+                            var ourAllocMemPtr = macosNativeHelper.JitMemAllocHookFunc;
+                            
+                            Span<byte> ptrData = stackalloc byte[sizeof(IntPtr)];
+                            MemoryMarshal.Write(ptrData, ref ourAllocMemPtr);
 
-                        Runtime.System.PatchData(PatchTargetKind.ReadOnly, (IntPtr)allocMemSlot, ptrData, default);
-                        
-                        installedAllocHook = true;
+                            Runtime.System.PatchData(PatchTargetKind.ReadOnly, (IntPtr)allocMemSlot, ptrData, default);
+                            
+                            installedAllocHook = true;
+                        }
                     }
                     
                     if (hotCodeRW == null) return;
