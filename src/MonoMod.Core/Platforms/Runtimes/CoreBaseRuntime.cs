@@ -61,11 +61,20 @@ namespace MonoMod.Core.Platforms.Runtimes
         protected CoreBaseRuntime(ISystem system)
         {
             System = system;
-
-            if ((PlatformDetection.Architecture == ArchitectureKind.x86_64 || PlatformDetection.Architecture == ArchitectureKind.Arm64) &&
-                system.DefaultAbi is { } abi)
+            
+            if (system.DefaultAbi is { } abi)
             {
-                AbiCore = AbiForCoreFx45X64(abi);
+                if (PlatformDetection.Architecture == ArchitectureKind.x86_64)
+                {
+                    AbiCore = AbiForCoreFx45X64(abi);
+                }
+                else if (PlatformDetection.Architecture == ArchitectureKind.Arm64)
+                {
+                    AbiCore = abi with
+                    {
+                        ArgumentOrder = new[] { SpecialArgumentKind.ThisPointer, SpecialArgumentKind.GenericContext, SpecialArgumentKind.UserArguments },
+                    };
+                }
             }
         }
 

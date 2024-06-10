@@ -16,22 +16,27 @@ namespace MonoMod.Core.Utils
         /// Gets the offset from the match start that an address is relative to, if it is relative.
         /// </summary>
         public int RelativeToOffset { get; }
-        
-        public ulong LiteralConstant { get; }
+        /// <summary>
+        /// Gets the constant value of this address, if it is constant.
+        /// </summary>
+        public ulong ConstantValue { get; }
 
         /// <summary>
         /// Constructs an <see cref="AddressMeaning"/> for the specified <see cref="AddressKind"/>.
         /// </summary>
         /// <param name="kind">The <see cref="AddressKind"/>.</param>
+        /// <param name="constantValue">The constant value of the address, if it is constant.</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="kind"/> is invalid -OR- <paramref name="kind"/> is relative.</exception>
-        public AddressMeaning(AddressKind kind, ulong literalConstant = 0)
+        public AddressMeaning(AddressKind kind, ulong constantValue = 0)
         {
             kind.Validate();
             if (!kind.IsAbsolute())
                 throw new ArgumentOutOfRangeException(nameof(kind));
+            if (!kind.IsConstant() && constantValue != 0)
+                throw new ArgumentOutOfRangeException(nameof(kind));
             Kind = kind;
             RelativeToOffset = 0;
-            LiteralConstant = literalConstant;
+            ConstantValue = constantValue;
         }
 
         /// <summary>
@@ -39,28 +44,31 @@ namespace MonoMod.Core.Utils
         /// </summary>
         /// <param name="kind">The <see cref="AddressKind"/>.</param>
         /// <param name="relativeOffset">The offset relative to the match start.</param>
+        /// <param name="constantValue">The constant value of the address, if it is constant.</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="kind"/> is invalid
         /// -OR- <paramref name="kind"/> is absolute
         /// -OR- <paramref name="relativeOffset"/> is less than zero.</exception>
-        public AddressMeaning(AddressKind kind, int relativeOffset, ulong literalConstant = 0)
+        public AddressMeaning(AddressKind kind, int relativeOffset, ulong constantValue = 0)
         {
             kind.Validate();
             if (!kind.IsRelative())
                 throw new ArgumentOutOfRangeException(nameof(kind));
             if (relativeOffset < 0)
                 throw new ArgumentOutOfRangeException(nameof(relativeOffset));
+            if (!kind.IsConstant() && constantValue != 0)
+                throw new ArgumentOutOfRangeException(nameof(kind));
             Kind = kind;
             RelativeToOffset = relativeOffset;
-            LiteralConstant = literalConstant;
+            ConstantValue = constantValue;
         }
         
-        private static unsafe nint DoProcessAddress(AddressKind kind, nint basePtr, int offset, ulong literalConstant, ulong address)
+        private static unsafe nint DoProcessAddress(AddressKind kind, nint basePtr, int offset, ulong constantValue, ulong address)
         {
             nint addr;
             
-            if (kind.IsLiteral())
+            if (kind.IsConstant())
             {
-                address = literalConstant;
+                address = constantValue;
             }
             
             if (kind.IsAbsolute())
@@ -90,7 +98,7 @@ namespace MonoMod.Core.Utils
         /// <returns>The resolved target address.</returns>
         public nint ProcessAddress(nint basePtr, int offset, ulong address)
         {
-            return DoProcessAddress(Kind, basePtr, offset + RelativeToOffset, LiteralConstant, address);
+            return DoProcessAddress(Kind, basePtr, offset + RelativeToOffset, ConstantValue, address);
         }
 
         /// <inheritdoc/>

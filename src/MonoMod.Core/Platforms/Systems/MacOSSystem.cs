@@ -38,7 +38,7 @@ namespace MonoMod.Core.Platforms.Systems
             else if (PlatformDetection.Architecture == ArchitectureKind.Arm64)
             {
                 DefaultAbi = new Abi(
-                    new[] { SpecialArgumentKind.ReturnBuffer, SpecialArgumentKind.ThisPointer, SpecialArgumentKind.UserArguments },
+                    new[] { SpecialArgumentKind.ThisPointer, SpecialArgumentKind.UserArguments },
                     ArmABI.ClassifyArm64,
                     true
                 );

@@ -653,7 +653,9 @@ namespace MonoMod.Core.Platforms
 
             if (from is MethodInfo fromInfo &&
                 to is MethodInfo toInfo &&
-                !fromInfo.IsStatic && to.IsStatic)
+                !fromInfo.IsStatic && to.IsStatic &&
+                // Arm64 always passes the return buffer in x8, not as an argument, so no fix up is needed
+                PlatformDetection.Architecture is not ArchitectureKind.Arm64)
             {
                 var retType = fromInfo.ReturnType;
                 // if from has `this` and to doesn't, then we need to fix up the abi
