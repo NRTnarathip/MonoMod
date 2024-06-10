@@ -7,18 +7,17 @@ namespace MonoMod.Utils
 {
     public static partial class ReflectionHelper
     {
-
         // .NET Framework can break member ordering if using Module.Resolve* on certain members.
 
         private static readonly object?[] _CacheGetterArgs = { /* MemberListType.All */ 0, /* name apparently always null? */ null };
 
-        private static Type t_RuntimeType =
+        // Note: on older Mono, RuntimeType doesn't exist. That's fine; it means there's no cache to fix.
+        private static Type? t_RuntimeType =
             typeof(Type).Assembly
-            .GetType("System.RuntimeType")
-            ?? throw new InvalidOperationException("Could not find RuntimeType");
+            .GetType("System.RuntimeType");
 
         private static Type? t_RuntimeTypeCache =
-            t_RuntimeType.GetNestedType("RuntimeTypeCache", BindingFlags.Public | BindingFlags.NonPublic);
+            t_RuntimeType?.GetNestedType("RuntimeTypeCache", BindingFlags.Public | BindingFlags.NonPublic);
 
         private static PropertyInfo? p_RuntimeType_Cache =
             t_RuntimeTypeCache == null ? null :

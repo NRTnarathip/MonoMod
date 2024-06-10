@@ -118,8 +118,9 @@ namespace MonoMod.Core.Platforms
         /// <remarks>
         /// This <see cref="PlatformTriple"/> is automatically constructed on first access, according to the values returned by <see cref="PlatformDetection"/>.
         /// </remarks>
-        public static unsafe PlatformTriple Current => Helpers.GetOrInitWithLock(ref lazyCurrent, lazyCurrentLock, &CreateCurrent);
+        public static unsafe PlatformTriple Current => Helpers.GetOrInitWithLock(ref lazyCurrent, lazyCurrentLock, createCurrentFunc);
 
+        private static readonly Func<PlatformTriple> createCurrentFunc = CreateCurrent;
         private static PlatformTriple CreateCurrent()
         {
             var sys = CreateCurrentSystem();

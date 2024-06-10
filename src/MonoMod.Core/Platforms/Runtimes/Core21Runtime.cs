@@ -39,11 +39,12 @@ namespace MonoMod.Core.Platforms.Runtimes
         }
         */
 
+        private static readonly Func<Core21Runtime, JitHookHelpersHolder> createJitHookHelpersFunc = CreateJitHookHelpers;
         private static JitHookHelpersHolder CreateJitHookHelpers(Core21Runtime self) => new(self);
 
         private readonly object sync = new();
         private JitHookHelpersHolder? lazyJitHookHelpers;
-        protected unsafe JitHookHelpersHolder JitHookHelpers => Helpers.GetOrInitWithLock(ref lazyJitHookHelpers, sync, &CreateJitHookHelpers, this);
+        protected unsafe JitHookHelpersHolder JitHookHelpers => Helpers.GetOrInitWithLock(ref lazyJitHookHelpers, sync, createJitHookHelpersFunc, this);
 
         // src/inc/corinfo.h line 216
         // 0ba106c8-81a0-407f-99a1-928448c1eb62

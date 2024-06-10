@@ -80,7 +80,7 @@ namespace MonoMod.Utils
 
             lock (_GetLdftnPointerCache)
             {
-                return (_GetLdftnPointerCache[m] = dmd.Generate().CreateDelegate<Func<IntPtr>>() as Func<IntPtr>)();
+                return (_GetLdftnPointerCache[m] = dmd.Generate().CreateDelegate<Func<IntPtr>>())();
             }
         }
 

@@ -12,6 +12,7 @@
     <!-- All MonoMod projects (by default) target these frameworks -->
     <!-- Put .NET 6.0 as the first framework so that OmniSharp uses it for VS Code Intelisense -->
     <TargetFrameworks>net6.0;net5.0;net7.0;net8.0;netstandard2.0;net35;net452</TargetFrameworks>
+    <BackportsTargetFrameworks>$(TargetFrameworks);netstandard2.1;netcoreapp2.1;netcoreapp3.0;netcoreapp3.1</BackportsTargetFrameworks>
     <!-- If a project wants to target some subset or other set, then they can just reassign TargetFrameworks in their project file -->
 
     <!-- Conditional compilation constants are used *everywhere*, make sure common ones are set -->
@@ -30,10 +31,8 @@
     <MMDocsPath>$(MMRootPath)docs\</MMDocsPath>
 
     <!-- These properties make the build outputs land out-of-source for easy fully clean rebuilds -->
-    <PackageOutputPath>$(MMArtifactsPath)packages\$(Configuration)\</PackageOutputPath>
-    <BaseIntermediateOutputPath>$(MMArtifactsPath)obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
-    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\</IntermediateOutputPath>
-    <BaseOutputPath>$(MMArtifactsPath)bin\$(MSBuildProjectName)\</BaseOutputPath>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MMArtifactsPath)</ArtifactsPath>
 
     <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
@@ -43,6 +42,10 @@
     <SignAssembly Condition="'$(SignAssembly)' == 'force'">true</SignAssembly>
     <SignAssembly Condition="'$(SignAssembly)' != 'skip'">false</SignAssembly> <!-- default -->
     <DelaySign>false</DelaySign>
+    
+    <!-- Package locking -->
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
 
   <!-- Debug -->

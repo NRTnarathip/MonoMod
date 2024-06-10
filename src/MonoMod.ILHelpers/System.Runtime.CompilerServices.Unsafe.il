@@ -7,10 +7,23 @@
 
 // =============== CLASS MEMBERS DECLARATION ===================
 
+.assembly extern MonoMod.Backports { }
+
+#ifdef NETSTANDARD2_1_OR_GREATER
+    #define UNSAFE_ILHELPERS
+#endif
+#ifdef NETCOREAPP1_0_OR_GREATER
+    #define UNSAFE_ILHELPERS
+#endif
+
 #ifdef NET6_0_OR_GREATER
 
 #ifdef NET6_0
-.assembly extern System.Runtime.CompilerServices.Unsafe { .ver CORE_ASSEMBLY_VERSION }
+.assembly extern System.Runtime.CompilerServices.Unsafe
+{
+    .publickeytoken = CORE_PUBKEY_TOKEN
+    .ver CORE_ASSEMBLY_VERSION
+}
 #endif
 
 .class extern forwarder System.Runtime.CompilerServices.Unsafe
@@ -24,10 +37,21 @@
 #endif
 }
 
+.class extern forwarder MonoMod.Backports.ILHelpers.UnsafeRaw { .assembly extern MonoMod.Backports }
+
 #else
 
 // TODO: nullable annotations (ugh)
+#ifdef UNSAFE_ILHELPERS
+// we define SRCS.Unsafe in ILHelpers, and forward UnsafeRaw to Backports, which forwards back here.
+.class extern forwarder MonoMod.Backports.ILHelpers.UnsafeRaw { .assembly extern MonoMod.Backports }
 .class public abstract auto ansi sealed beforefieldinit System.Runtime.CompilerServices.Unsafe
+#else
+// we define SRCS.Unsafe in Backports to handle some runtime issues, forward to it here,
+// and Backports uses some of UnsafeRaw to actually implement it
+.class extern forwarder System.Runtime.CompilerServices.Unsafe { .assembly extern MonoMod.Backports }
+.class public abstract auto ansi sealed beforefieldinit MonoMod.Backports.ILHelpers.UnsafeRaw
+#endif
        extends [CORE_ASSEMBLY]System.Object
 {
   .method public hidebysig static !!T Read<T>(void* source) cil managed aggressiveinlining
@@ -324,6 +348,10 @@
   .method public hidebysig static !!T& Add<T>(!!T& source, native int elementOffset) cil managed aggressiveinlining
   {
         .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
+        .param [2]
+            .custom instance void System.Runtime.CompilerServices.NativeIntegerAttribute::.ctor() = (
+                01 00 00 00
+            )
         .maxstack 8
         ldarg.0
         ldarg.1
@@ -335,11 +363,11 @@
 
   .method public hidebysig static !!T& Add<T>(!!T& source, native uint elementOffset) cil managed aggressiveinlining
   {
+        .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
         .param [2]
             .custom instance void System.Runtime.CompilerServices.NativeIntegerAttribute::.ctor() = (
                 01 00 00 00
             )
-        .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
         .maxstack 8
         ldarg.0
         ldarg.1
@@ -352,6 +380,10 @@
   .method public hidebysig static !!T& AddByteOffset<T>(!!T& source, native int byteOffset) cil managed aggressiveinlining
   {
         .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
+        .param [2]
+            .custom instance void System.Runtime.CompilerServices.NativeIntegerAttribute::.ctor() = (
+                01 00 00 00
+            )
         .maxstack 8
         ldarg.0
         ldarg.1
@@ -361,11 +393,11 @@
 
   .method public hidebysig static !!T& AddByteOffset<T>(!!T& source, native uint byteOffset) cil managed aggressiveinlining
   {
+        .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
         .param [2]
             .custom instance void System.Runtime.CompilerServices.NativeIntegerAttribute::.ctor() = (
                 01 00 00 00
             )
-        .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
         .maxstack 8
         ldarg.0
         ldarg.1
@@ -402,6 +434,10 @@
   .method public hidebysig static !!T& Subtract<T>(!!T& source, native int elementOffset) cil managed aggressiveinlining
   {
         .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
+        .param [2]
+            .custom instance void System.Runtime.CompilerServices.NativeIntegerAttribute::.ctor() = (
+                01 00 00 00
+            )
         .maxstack 8
         ldarg.0
         ldarg.1
@@ -413,11 +449,11 @@
 
   .method public hidebysig static !!T& Subtract<T>(!!T& source, native uint elementOffset) cil managed aggressiveinlining
   {
+        .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
         .param [2]
             .custom instance void System.Runtime.CompilerServices.NativeIntegerAttribute::.ctor() = (
                 01 00 00 00
             )
-        .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
         .maxstack 8
         ldarg.0
         ldarg.1
@@ -430,6 +466,10 @@
   .method public hidebysig static !!T& SubtractByteOffset<T>(!!T& source, native int byteOffset) cil managed aggressiveinlining
   {
         .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
+        .param [2]
+            .custom instance void System.Runtime.CompilerServices.NativeIntegerAttribute::.ctor() = (
+                01 00 00 00
+            )
         .maxstack 8
         ldarg.0
         ldarg.1
@@ -439,11 +479,11 @@
 
   .method public hidebysig static !!T& SubtractByteOffset<T>(!!T& source, native uint byteOffset) cil managed aggressiveinlining
   {
+        .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
         .param [2]
             .custom instance void System.Runtime.CompilerServices.NativeIntegerAttribute::.ctor() = (
                 01 00 00 00
             )
-        .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
         .maxstack 8
         ldarg.0
         ldarg.1
@@ -454,6 +494,10 @@
   .method public hidebysig static native int ByteOffset<T>(!!T& origin, !!T& target) cil managed aggressiveinlining
   {
         .custom instance void System.Runtime.Versioning.NonVersionableAttribute::.ctor() = ( 01 00 00 00 )
+        .param [0]
+            .custom instance void System.Runtime.CompilerServices.NativeIntegerAttribute::.ctor() = (
+                01 00 00 00
+            )
         .maxstack 8
         ldarg.1
         ldarg.0

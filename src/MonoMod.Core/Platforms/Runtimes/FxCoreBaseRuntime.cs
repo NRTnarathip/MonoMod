@@ -305,7 +305,7 @@ namespace MonoMod.Core.Platforms.Runtimes
             {
                 // if the method is a virtual method on a value type, we want to do something to compile the real
                 // method instead of just the unboxing stub. The RuntimeMethodHandle we got from the MethodBase
-                // points to the unboxing stub. We could use knowlege of the runtime to get the non-unboxing stub
+                // points to the unboxing stub. We could use knowledge of the runtime to get the non-unboxing stub
                 // MethodDesc, then create a RuntimeMethodHandle for it, however that may change per-runtime.
                 // If we want to implement that, we can implement TryGetCacnonicalMethodHandle.
 

@@ -79,9 +79,10 @@ namespace MonoMod.Core
         public static unsafe IDetourFactory Current
         {
             [MethodImpl(MethodImplOptionsEx.AggressiveInlining)]
-            get => Helpers.GetOrInit(ref lazyCurrent, &CreateDefaultFactory);
+            get => Helpers.GetOrInit(ref lazyCurrent, createDefaultFactoryFunc);
         }
 
+        private static readonly Func<PlatformTripleDetourFactory> createDefaultFactoryFunc = CreateDefaultFactory;
         private static PlatformTripleDetourFactory CreateDefaultFactory()
             => new(PlatformTriple.Current);
 

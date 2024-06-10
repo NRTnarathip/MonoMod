@@ -7,5 +7,20 @@
   <!-- This contains common stuff that specific packages may wish to disable. -->  
   <!-- Include the language-specific targets file, if it exists -->
   <Import Project="$(MMLanguageTargets)" Condition="Exists('$(MMLanguageTargets)')" />
+
+  <Target Name="GetProperties" Outputs="@(Properties)">
+    <ItemGroup>
+      <_PropertiesToGet Remove="@(_PropertiesToGet)" />
+      <Properties Remove="@(Properties)" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <_PropertiesToGet Include="$(PropertyNames)" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Properties Include="%(_PropertiesToGet.Identity)" Value="$(%(Identity))" />
+    </ItemGroup>
+  </Target>
   
 </Project>

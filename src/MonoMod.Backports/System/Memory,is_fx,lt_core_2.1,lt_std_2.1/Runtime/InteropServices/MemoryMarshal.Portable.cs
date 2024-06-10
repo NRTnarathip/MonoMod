@@ -31,7 +31,7 @@ namespace System.Runtime.InteropServices
                 ThrowHelper.ThrowArgumentException_InvalidTypeWithPointersNotSupported(typeof(T));
 
             int newLength = checked(span.Length * Unsafe.SizeOf<T>());
-            return new Span<byte>(Unsafe.As<Pinnable<byte>>(span.Pinnable), span.ByteOffset, newLength);
+            return new Span<byte>(span.Pinnable, span.ByteOffset, newLength);
         }
 
         /// <summary>
@@ -53,7 +53,7 @@ namespace System.Runtime.InteropServices
                 ThrowHelper.ThrowArgumentException_InvalidTypeWithPointersNotSupported(typeof(T));
 
             int newLength = checked(span.Length * Unsafe.SizeOf<T>());
-            return new ReadOnlySpan<byte>(Unsafe.As<Pinnable<byte>>(span.Pinnable), span.ByteOffset, newLength);
+            return new ReadOnlySpan<byte>(span.Pinnable, span.ByteOffset, newLength);
         }
 
         /// <summary>Creates a <see cref="Memory{T}"/> from a <see cref="ReadOnlyMemory{T}"/>.</summary>
@@ -72,25 +72,13 @@ namespace System.Runtime.InteropServices
         /// Returns a reference to the 0th element of the Span. If the Span is empty, returns a reference to the location where the 0th element
         /// would have been stored. Such a reference can be used for pinning but must never be dereferenced.
         /// </summary>
-        public static ref T GetReference<T>(Span<T> span)
-        {
-            if (span.Pinnable == null)
-                unsafe { return ref Unsafe.AsRef<T>(span.ByteOffset.ToPointer()); }
-            else
-                return ref Unsafe.AddByteOffset<T>(ref span.Pinnable.Data, span.ByteOffset);
-        }
+        public static ref T GetReference<T>(Span<T> span) => ref span.DangerousGetPinnableReference();
 
         /// <summary>
         /// Returns a reference to the 0th element of the ReadOnlySpan. If the Span is empty, returns a reference to the location where the 0th element
         /// would have been stored. Such a reference can be used for pinning but must never be dereferenced.
         /// </summary>
-        public static ref T GetReference<T>(ReadOnlySpan<T> span)
-        {
-            if (span.Pinnable == null)
-                unsafe { return ref Unsafe.AsRef<T>(span.ByteOffset.ToPointer()); }
-            else
-                return ref Unsafe.AddByteOffset<T>(ref span.Pinnable.Data, span.ByteOffset);
-        }
+        public static ref T GetReference<T>(ReadOnlySpan<T> span) => ref Unsafe.AsRef(in span.GetPinnableReference());
 
         /// <summary>
         /// Casts a Span of one primitive type <typeparamref name="TFrom"/> to another primitive type <typeparamref name="TTo"/>.
@@ -114,7 +102,7 @@ namespace System.Runtime.InteropServices
                 ThrowHelper.ThrowArgumentException_InvalidTypeWithPointersNotSupported(typeof(TTo));
 
             int newLength = checked((int)((long)span.Length * Unsafe.SizeOf<TFrom>() / Unsafe.SizeOf<TTo>()));
-            return new Span<TTo>(Unsafe.As<Pinnable<TTo>>(span.Pinnable), span.ByteOffset, newLength);
+            return new Span<TTo>(span.Pinnable, span.ByteOffset, newLength);
         }
 
         /// <summary>
@@ -139,7 +127,7 @@ namespace System.Runtime.InteropServices
                 ThrowHelper.ThrowArgumentException_InvalidTypeWithPointersNotSupported(typeof(TTo));
 
             int newLength = checked((int)((long)span.Length * Unsafe.SizeOf<TFrom>() / Unsafe.SizeOf<TTo>()));
-            return new ReadOnlySpan<TTo>(Unsafe.As<Pinnable<TTo>>(span.Pinnable), span.ByteOffset, newLength);
+            return new ReadOnlySpan<TTo>(span.Pinnable, span.ByteOffset, newLength);
         }
     }
 }

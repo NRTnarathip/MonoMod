@@ -22,10 +22,6 @@
     <MMIncludeTFMChecks>false</MMIncludeTFMChecks>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageFile Include="$(MMRootPath)icon.png" PackagePath="%(Filename)%(Extension)" />
-  </ItemGroup>
-
   <!-- We have literally no reason not to use SourceLink -->
   <PropertyGroup>
     <!-- https://github.com/dotnet/sourcelink -->

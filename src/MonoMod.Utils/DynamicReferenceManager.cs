@@ -114,7 +114,7 @@ namespace MonoMod.Utils
         [MethodImpl(MethodImplOptionsEx.AggressiveOptimization)]
         public static DataScope<DynamicReferenceCell> AllocReference<T>(in T? value, out DynamicReferenceCell cellRef)
         {
-            if (default(T) == null)
+            if (!typeof(T).IsValueType)
             {
                 return AllocReferenceClass(Unsafe.As<T?, object?>(ref Unsafe.AsRef(in value)), out cellRef);
             }
@@ -197,14 +197,14 @@ namespace MonoMod.Utils
             {
                 case RefValueCell:
                     {
-                        Helpers.Assert(default(T) == null);
+                        Helpers.Assert(!typeof(T).IsValueType);
                         var c = Unsafe.As<RefCell>(cell);
                         Helpers.Assert(c.Value is null or T);
                         return ref Unsafe.As<object?, T?>(ref c.Value!);
                     }
                 case ValueTypeCell:
                     {
-                        Helpers.Assert(default(T) != null);
+                        Helpers.Assert(typeof(T).IsValueType);
                         var c = (ValueCell<T>)cell;
                         return ref c.Value;
                     }

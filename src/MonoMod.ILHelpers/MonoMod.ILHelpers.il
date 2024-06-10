@@ -18,7 +18,7 @@
     {
         .maxstack 8
         ldarg.0
-        tail.
+        //tail. // The tail prefix on calli seems to be considered by many tools to be invalid.
         calli !!T()
         ret
     } // end of method Unsafe::Read
@@ -31,36 +31,40 @@
         callvirt instance !0 class [FUNC_ASSEMBLY]System.Func`1<!!T>::Invoke()
         ret
     }
-
-    .method public hidebysig static !!T& UnboxAnyUnsafe<T>(object& 'box') cil managed aggressiveinlining
+    
+    .method public hidebysig static !!T& ObjectAsRef<T>(object obj) cil managed aggressiveinlining
     {
-        .custom instance void System.Runtime.CompilerServices.NullableContextAttribute::.ctor(uint8) = (
-	        01 00 02 00 00
+        .maxstack 1
+        .locals (
+            object pinned pin
+#ifndef netcoreapp
+            , !!T** refPtr
+            , !!T& finalRef
+#endif
         )
 
-        .maxstack 8
-        .locals init (
-            [0] !!T
-        )
+        // pin obj
+        ldarg obj
+        stloc pin
 
-        // if (default(T) == null)
-        ldloca.s 0
-        initobj !!T
-        ldloc.0
-        box !!T
-        ldnull
-        ceq
-        brfalse ValType
+#ifdef netcoreapp
+        // return ref *Unsafe.BitCast<object, T*>(pin);
+        ldloc pin
+        conv.u
+#else
+        // see docs/RuntimeIssueNotes.md - "`fixed` on strings in old Mono" for why this is necessary
+        // T* ptr = *(T**)(&pin);
+        ldloca pin
+        conv.u
+        stloc refPtr
+        ldloc refPtr
+        ldind.i
+        // return Unsafe.AsRef<T>(ptr);
+        // see the comments inside that function for why don't just immediately ret
+        stloc finalRef
+        ldloc finalRef
+#endif
 
-        // it's a reference type, so we just return the ref like Unsafe.As
-        ldarg.0
-        ret
-
-      ValType:
-        // it's a value type, so we want to unbox and return the ref
-        ldarg.0
-        ldind.ref
-        unbox !!T
         ret
     }
 }

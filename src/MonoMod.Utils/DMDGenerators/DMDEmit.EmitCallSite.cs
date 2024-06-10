@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
-using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CallSite = Mono.Cecil.CallSite;
 
 namespace MonoMod.Utils
@@ -49,7 +49,7 @@ namespace MonoMod.Utils
             .GetType("System.Reflection.Emit.DynamicScope")?.GetField("m_tokens", BindingFlags.NonPublic | BindingFlags.Instance);
 
         // Based on https://referencesource.microsoft.com/#mscorlib/system/reflection/mdimport.cs,74bfbae3c61889bc
-        private static readonly Type?[] CorElementTypes = new Type?[] {
+        private static readonly Type?[] CorElementTypes = [
             null,               // END
             typeof(void),       // VOID
             typeof(bool),       // BOOL
@@ -80,7 +80,7 @@ namespace MonoMod.Utils
             null,               // FNPTR
             typeof(object),     // OBJECT
             // all others don't have specific types associated
-        };
+        ];
 
         private abstract class TokenCreator
         {
@@ -133,266 +133,274 @@ namespace MonoMod.Utils
             // I assume, however, that we can't use SignatureHelper here because it is horribly broken on some (probably older) mono builds.
         }
 
-        internal static void _EmitCallSite(DynamicMethod dm, ILGenerator il, System.Reflection.Emit.OpCode opcode, CallSite csite)
+        private abstract class CallSiteEmitter
         {
-            /* The mess in this method is heavily based off of the code available at the following links:
-             * https://github.com/Microsoft/referencesource/blob/3b1eaf5203992df69de44c783a3eda37d3d4cd10/mscorlib/system/reflection/emit/dynamicmethod.cs#L791
-             * https://github.com/Microsoft/referencesource/blob/3b1eaf5203992df69de44c783a3eda37d3d4cd10/mscorlib/system/reflection/emit/dynamicilgenerator.cs#L353
-             * https://github.com/mono/mono/blob/82e573122a55482bf6592f36f819597238628385/mcs/class/corlib/System.Reflection.Emit/DynamicMethod.cs#L411
-             * https://github.com/mono/mono/blob/82e573122a55482bf6592f36f819597238628385/mcs/class/corlib/System.Reflection.Emit/ILGenerator.cs#L800
-             * https://github.com/dotnet/coreclr/blob/0fbd855e38bc3ec269479b5f6bf561dcfd67cbb6/src/System.Private.CoreLib/src/System/Reflection/Emit/SignatureHelper.cs#L57
-             */
+            public abstract void EmitCallSite(DynamicMethod dm, ILGenerator il, OpCode opcode, CallSite csite);
+        }
 
-            TokenCreator tokenCreator = DynamicMethod_AddRef is not null
-                ? new MonoTokenCreator(dm) : new NetTokenCreator(il);
-
-            var signature = new byte[32];
-            var currSig = 0;
-            var sizeLoc = -1;
-
-            // This expects a MdSigCallingConvention
-            AddData((byte)csite.CallingConvention);
-            sizeLoc = currSig++;
-
-            var modReq = new List<Type>();
-            var modOpt = new List<Type>();
-
-            ResolveWithModifiers(csite.ReturnType, out var returnType, out var returnTypeModReq, out var returnTypeModOpt, modReq, modOpt);
-            AddArgument(returnType, returnTypeModReq, returnTypeModOpt);
-
-            foreach (var param in csite.Parameters)
+        private sealed class NetCallSiteEmitter : CallSiteEmitter
+        {
+            public override void EmitCallSite(DynamicMethod dm, ILGenerator il, OpCode opcode, CallSite csite)
             {
-                if (param.ParameterType.IsSentinel)
-                    AddElementType(0x41 /* CorElementType.Sentinel */);
+                /* The mess in this method is heavily based off of the code available at the following links:
+                 * https://github.com/Microsoft/referencesource/blob/3b1eaf5203992df69de44c783a3eda37d3d4cd10/mscorlib/system/reflection/emit/dynamicmethod.cs#L791
+                 * https://github.com/Microsoft/referencesource/blob/3b1eaf5203992df69de44c783a3eda37d3d4cd10/mscorlib/system/reflection/emit/dynamicilgenerator.cs#L353
+                 * https://github.com/mono/mono/blob/82e573122a55482bf6592f36f819597238628385/mcs/class/corlib/System.Reflection.Emit/DynamicMethod.cs#L411
+                 * https://github.com/mono/mono/blob/82e573122a55482bf6592f36f819597238628385/mcs/class/corlib/System.Reflection.Emit/ILGenerator.cs#L800
+                 * https://github.com/dotnet/coreclr/blob/0fbd855e38bc3ec269479b5f6bf561dcfd67cbb6/src/System.Private.CoreLib/src/System/Reflection/Emit/SignatureHelper.cs#L57
+                 */
 
-                if (param.ParameterType.IsPinned)
+                TokenCreator tokenCreator = DynamicMethod_AddRef is not null
+                    ? new MonoTokenCreator(dm) : new NetTokenCreator(il);
+
+                var signature = new byte[32];
+                var currSig = 0;
+                var sizeLoc = -1;
+
+                // We're emitting a StandAloneMethodSig
+
+                AddData(((byte)csite.CallingConvention) | (csite.HasThis ? 0x20 : 0) | (csite.ExplicitThis ? 0x40 : 0));
+                sizeLoc = currSig++;
+
+                var modReq = new List<Type>();
+                var modOpt = new List<Type>();
+
+                ResolveWithModifiers(csite.ReturnType, out var returnType, out var returnTypeModReq, out var returnTypeModOpt, modReq, modOpt);
+                AddArgument(returnType, returnTypeModReq, returnTypeModOpt);
+
+                foreach (var param in csite.Parameters)
                 {
-                    AddElementType(0x45 /* CorElementType.Pinned */);
-                    // AddArgument(param.ParameterType.ResolveReflection());
-                    // continue;
+                    if (param.ParameterType.IsSentinel)
+                        AddElementType(0x41 /* CorElementType.Sentinel */);
+
+                    if (param.ParameterType.IsPinned)
+                    {
+                        AddElementType(0x45 /* CorElementType.Pinned */);
+                        // AddArgument(param.ParameterType.ResolveReflection());
+                        // continue;
+                    }
+
+                    ResolveWithModifiers(param.ParameterType, out var paramType, out var paramTypeModReq, out var paramTypeModOpt, modReq, modOpt);
+                    AddArgument(paramType, paramTypeModReq, paramTypeModOpt);
                 }
 
-                ResolveWithModifiers(param.ParameterType, out var paramType, out var paramTypeModReq, out var paramTypeModOpt, modReq, modOpt);
-                AddArgument(paramType, paramTypeModReq, paramTypeModOpt);
-            }
+                AddElementType(0x00 /* CorElementType.End */);
 
-            AddElementType(0x00 /* CorElementType.End */);
+                // For most signatures, this will set the number of elements in a byte which we have reserved for it.
+                // However, if we have a field signature, we don't set the length and return.
+                // If we have a signature with more than 128 arguments, we can't just set the number of elements,
+                // we actually have to allocate more space (e.g. shift everything in the array one or more spaces to the
+                // right.  We do this by making a copy of the array and leaving the correct number of blanks.  This new
+                // array is now set to be m_signature and we use the AddData method to set the number of elements properly.
+                // The forceCopy argument can be used to force SetNumberOfSignatureElements to make a copy of
+                // the array.  This is useful for GetSignature which promises to trim the array to be the correct size anyway.
 
-            // For most signatures, this will set the number of elements in a byte which we have reserved for it.
-            // However, if we have a field signature, we don't set the length and return.
-            // If we have a signature with more than 128 arguments, we can't just set the number of elements,
-            // we actually have to allocate more space (e.g. shift everything in the array one or more spaces to the
-            // right.  We do this by making a copy of the array and leaving the correct number of blanks.  This new
-            // array is now set to be m_signature and we use the AddData method to set the number of elements properly.
-            // The forceCopy argument can be used to force SetNumberOfSignatureElements to make a copy of
-            // the array.  This is useful for GetSignature which promises to trim the array to be the correct size anyway.
+                byte[] temp;
+                int newSigSize;
+                var currSigHolder = currSig;
 
-            byte[] temp;
-            int newSigSize;
-            var currSigHolder = currSig;
-
-            // We need to have more bytes for the size.  Figure out how many bytes here.
-            // Since we need to copy anyway, we're just going to take the cost of doing a
-            // new allocation.
-            if (csite.Parameters.Count < 0x80)
-            {
-                newSigSize = 1;
-            }
-            else if (csite.Parameters.Count < 0x4000)
-            {
-                newSigSize = 2;
-            }
-            else
-            {
-                newSigSize = 4;
-            }
-
-            // Allocate the new array.
-            temp = new byte[currSig + newSigSize - 1];
-
-            // Copy the calling convention.  The calling convention is always just one byte
-            // so we just copy that byte.  Then copy the rest of the array, shifting everything
-            // to make room for the new number of elements.
-            temp[0] = signature[0];
-            Buffer.BlockCopy(signature, sizeLoc + 1, temp, sizeLoc + newSigSize, currSigHolder - (sizeLoc + 1));
-            signature = temp;
-
-            //Use the AddData method to add the number of elements appropriately compressed.
-            currSig = sizeLoc;
-            AddData(csite.Parameters.Count);
-            currSig = currSigHolder + (newSigSize - 1);
-
-            // This case will only happen if the user got the signature through 
-            // InternalGetSignature first and then called GetSignature.
-            if (signature.Length > currSig)
-            {
-                temp = new byte[currSig];
-                Array.Copy(signature, temp, currSig);
-                signature = temp;
-            }
-
-            // Emit.
-
-            if (_ILGen_emit_int != null)
-            {
-                // Mono
-                _ILGen_make_room!.Invoke(il, new object[] { 6 });
-                _ILGen_ll_emit!.Invoke(il, new object[] { opcode });
-                _ILGen_emit_int!.Invoke(il, new object[] { tokenCreator.GetTokenForSig(signature) });
-            }
-            else
-            {
-                // .NET
-                _ILGen_EnsureCapacity!.Invoke(il, new object[] { 7 });
-                _ILGen_InternalEmit!.Invoke(il, new object[] { opcode });
-
-                // The only IL instruction that has VarPop behaviour, that takes a
-                // Signature token as a parameter is calli.  Pop the parameters and
-                // the native function pointer.  To be conservative, do not pop the
-                // this pointer since this information is not easily derived from
-                // SignatureHelper.
-                if (opcode.StackBehaviourPop == System.Reflection.Emit.StackBehaviour.Varpop)
+                // We need to have more bytes for the size.  Figure out how many bytes here.
+                // Since we need to copy anyway, we're just going to take the cost of doing a
+                // new allocation.
+                if (csite.Parameters.Count < 0x80)
                 {
-                    // Pop the arguments and native function pointer off the stack.
-                    _ILGen_UpdateStackSize!.Invoke(il, new object[] { opcode, -csite.Parameters.Count - 1 });
+                    newSigSize = 1;
                 }
-
-                _ILGen_PutInteger4!.Invoke(il, new object[] { tokenCreator.GetTokenForSig(signature) });
-            }
-
-            void AddArgument(Type clsArgument, Type[] requiredCustomModifiers, Type[] optionalCustomModifiers)
-            {
-                if (optionalCustomModifiers != null)
-                    foreach (var t in optionalCustomModifiers)
-                        InternalAddTypeToken(tokenCreator.GetTokenForType(t), 0x20 /* CorElementType.CModOpt */);
-
-                if (requiredCustomModifiers != null)
-                    foreach (var t in requiredCustomModifiers)
-                        InternalAddTypeToken(tokenCreator.GetTokenForType(t), 0x1F /* CorElementType.CModReqd */);
-
-                AddOneArgTypeHelper(clsArgument);
-            }
-
-            void AddData(int data)
-            {
-                // A managed representation of CorSigCompressData; 
-
-                if (currSig + 4 > signature!.Length)
+                else if (csite.Parameters.Count < 0x4000)
                 {
-                    signature = ExpandArray(signature);
-                }
-
-                if (data <= 0x7F)
-                {
-                    signature[currSig++] = (byte)(data & 0xFF);
-                }
-                else if (data <= 0x3FFF)
-                {
-                    signature[currSig++] = (byte)((data >> 8) | 0x80);
-                    signature[currSig++] = (byte)(data & 0xFF);
-                }
-                else if (data <= 0x1FFFFFFF)
-                {
-                    signature[currSig++] = (byte)((data >> 24) | 0xC0);
-                    signature[currSig++] = (byte)((data >> 16) & 0xFF);
-                    signature[currSig++] = (byte)((data >> 8) & 0xFF);
-                    signature[currSig++] = (byte)((data) & 0xFF);
+                    newSigSize = 2;
                 }
                 else
                 {
-                    throw new ArgumentException("Integer or token was too large to be encoded.");
-                }
-            }
-
-            byte[] ExpandArray(byte[] inArray, int requiredLength = -1)
-            {
-                if (requiredLength < inArray.Length)
-                    requiredLength = inArray.Length * 2;
-
-                var outArray = new byte[requiredLength];
-                Buffer.BlockCopy(inArray, 0, outArray, 0, inArray.Length);
-                return outArray;
-            }
-
-            void AddElementType(byte cvt)
-            {
-                // Adds an element to the signature.  A managed represenation of CorSigCompressElement
-                if (currSig + 1 > signature.Length)
-                    signature = ExpandArray(signature);
-
-                signature[currSig++] = cvt;
-            }
-
-            void AddToken(int token)
-            {
-                // A managed represenation of CompressToken
-                // Pulls the token appart to get a rid, adds some appropriate bits
-                // to the token and then adds this to the signature.
-
-                var rid = (token & 0x00FFFFFF); //This is RidFromToken;
-                var type = (token & unchecked((int)0xFF000000)); //This is TypeFromToken;
-
-                if (rid > 0x3FFFFFF)
-                {
-                    // token is too big to be compressed    
-                    throw new ArgumentException("Integer or token was too large to be encoded.");
+                    newSigSize = 4;
                 }
 
-                rid = (rid << 2);
+                // Allocate the new array.
+                temp = new byte[currSig + newSigSize - 1];
 
-                // TypeDef is encoded with low bits 00  
-                // TypeRef is encoded with low bits 01  
-                // TypeSpec is encoded with low bits 10    
-                if (type == 0x01000000 /* MetadataTokenType.TypeRef */)
+                // Copy the calling convention.  The calling convention is always just one byte
+                // so we just copy that byte.  Then copy the rest of the array, shifting everything
+                // to make room for the new number of elements.
+                temp[0] = signature[0];
+                Buffer.BlockCopy(signature, sizeLoc + 1, temp, sizeLoc + newSigSize, currSigHolder - (sizeLoc + 1));
+                signature = temp;
+
+                //Use the AddData method to add the number of elements appropriately compressed.
+                currSig = sizeLoc;
+                AddData(csite.Parameters.Count);
+                currSig = currSigHolder + (newSigSize - 1);
+
+                // This case will only happen if the user got the signature through 
+                // InternalGetSignature first and then called GetSignature.
+                if (signature.Length > currSig)
                 {
-                    //if type is mdtTypeRef
-                    rid |= 0x1;
+                    temp = new byte[currSig];
+                    Array.Copy(signature, temp, currSig);
+                    signature = temp;
                 }
-                else if (type == 0x1b000000 /* MetadataTokenType.TypeSpec */)
+
+                // Emit.
+
+                if (_ILGen_emit_int != null)
                 {
-                    //if type is mdtTypeSpec
-                    rid |= 0x2;
+                    // Mono
+                    _ILGen_make_room!.Invoke(il, new object[] { 6 });
+                    _ILGen_ll_emit!.Invoke(il, new object[] { opcode });
+                    _ILGen_emit_int!.Invoke(il, new object[] { tokenCreator.GetTokenForSig(signature) });
+                }
+                else
+                {
+                    // .NET
+                    _ILGen_EnsureCapacity!.Invoke(il, new object[] { 7 });
+                    _ILGen_InternalEmit!.Invoke(il, new object[] { opcode });
+
+                    // The only IL instruction that has VarPop behaviour, that takes a
+                    // Signature token as a parameter is calli.  Pop the parameters and
+                    // the native function pointer.  To be conservative, do not pop the
+                    // this pointer since this information is not easily derived from
+                    // SignatureHelper.
+                    if (opcode.StackBehaviourPop == System.Reflection.Emit.StackBehaviour.Varpop)
+                    {
+                        // Pop the arguments and native function pointer off the stack.
+                        _ILGen_UpdateStackSize!.Invoke(il, new object[] { opcode, -csite.Parameters.Count - 1 });
+                    }
+
+                    _ILGen_PutInteger4!.Invoke(il, new object[] { tokenCreator.GetTokenForSig(signature) });
                 }
 
-                AddData(rid);
-            }
-
-            void InternalAddTypeToken(int clsToken, byte CorType)
-            {
-                // Add a type token into signature. CorType will be either CorElementType.Class or CorElementType.ValueType
-                AddElementType(CorType);
-                AddToken(clsToken);
-            }
-
-            void AddOneArgTypeHelper(Type clsArgument) { AddOneArgTypeHelperWorker(clsArgument, false); }
-            void AddOneArgTypeHelperWorker(Type clsArgument, bool lastWasGenericInst)
-            {
-                if (clsArgument.IsGenericType && (!clsArgument.IsGenericTypeDefinition || !lastWasGenericInst))
+                void AddArgument(Type clsArgument, Type[] requiredCustomModifiers, Type[] optionalCustomModifiers)
                 {
-                    AddElementType(0x15 /* CorElementType.GenericInst */);
+                    if (optionalCustomModifiers != null)
+                        foreach (var t in optionalCustomModifiers)
+                            InternalAddTypeToken(tokenCreator.GetTokenForType(t), 0x20 /* CorElementType.CModOpt */);
 
-                    AddOneArgTypeHelperWorker(clsArgument.GetGenericTypeDefinition(), true);
+                    if (requiredCustomModifiers != null)
+                        foreach (var t in requiredCustomModifiers)
+                            InternalAddTypeToken(tokenCreator.GetTokenForType(t), 0x1F /* CorElementType.CModReqd */);
 
-                    var genargs = clsArgument.GetGenericArguments();
-
-                    AddData(genargs.Length);
-
-                    foreach (var t in genargs)
-                        AddOneArgTypeHelper(t);
-                }
-                else if (clsArgument.IsByRef)
-                {
-                    AddElementType(0x10 /* CorElementType.ByRef */);
-                    clsArgument = clsArgument.GetElementType() ?? clsArgument;
                     AddOneArgTypeHelper(clsArgument);
                 }
-                else if (clsArgument.IsPointer)
+
+                void AddData(int data)
                 {
-                    AddElementType(0x0F /* CorElementType.Ptr */);
-                    AddOneArgTypeHelper(clsArgument.GetElementType() ?? clsArgument);
+                    // A managed representation of CorSigCompressData; 
+
+                    if (currSig + 4 > signature!.Length)
+                    {
+                        signature = ExpandArray(signature);
+                    }
+
+                    if (data <= 0x7F)
+                    {
+                        signature[currSig++] = (byte)(data & 0xFF);
+                    }
+                    else if (data <= 0x3FFF)
+                    {
+                        signature[currSig++] = (byte)((data >> 8) | 0x80);
+                        signature[currSig++] = (byte)(data & 0xFF);
+                    }
+                    else if (data <= 0x1FFFFFFF)
+                    {
+                        signature[currSig++] = (byte)((data >> 24) | 0xC0);
+                        signature[currSig++] = (byte)((data >> 16) & 0xFF);
+                        signature[currSig++] = (byte)((data >> 8) & 0xFF);
+                        signature[currSig++] = (byte)((data) & 0xFF);
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Integer or token was too large to be encoded.");
+                    }
                 }
-                else if (clsArgument.IsArray)
+
+                byte[] ExpandArray(byte[] inArray, int requiredLength = -1)
                 {
+                    if (requiredLength < inArray.Length)
+                        requiredLength = inArray.Length * 2;
+
+                    var outArray = new byte[requiredLength];
+                    Buffer.BlockCopy(inArray, 0, outArray, 0, inArray.Length);
+                    return outArray;
+                }
+
+                void AddElementType(byte cvt)
+                {
+                    // Adds an element to the signature.  A managed represenation of CorSigCompressElement
+                    if (currSig + 1 > signature.Length)
+                        signature = ExpandArray(signature);
+
+                    signature[currSig++] = cvt;
+                }
+
+                void AddToken(int token)
+                {
+                    // A managed represenation of CompressToken
+                    // Pulls the token appart to get a rid, adds some appropriate bits
+                    // to the token and then adds this to the signature.
+
+                    var rid = (token & 0x00FFFFFF); //This is RidFromToken;
+                    var type = (token & unchecked((int)0xFF000000)); //This is TypeFromToken;
+
+                    if (rid > 0x3FFFFFF)
+                    {
+                        // token is too big to be compressed    
+                        throw new ArgumentException("Integer or token was too large to be encoded.");
+                    }
+
+                    rid = (rid << 2);
+
+                    // TypeDef is encoded with low bits 00  
+                    // TypeRef is encoded with low bits 01  
+                    // TypeSpec is encoded with low bits 10    
+                    if (type == 0x01000000 /* MetadataTokenType.TypeRef */)
+                    {
+                        //if type is mdtTypeRef
+                        rid |= 0x1;
+                    }
+                    else if (type == 0x1b000000 /* MetadataTokenType.TypeSpec */)
+                    {
+                        //if type is mdtTypeSpec
+                        rid |= 0x2;
+                    }
+
+                    AddData(rid);
+                }
+
+                void InternalAddTypeToken(int clsToken, byte CorType)
+                {
+                    // Add a type token into signature. CorType will be either CorElementType.Class or CorElementType.ValueType
+                    AddElementType(CorType);
+                    AddToken(clsToken);
+                }
+
+                void AddOneArgTypeHelper(Type clsArgument) { AddOneArgTypeHelperWorker(clsArgument, false); }
+                void AddOneArgTypeHelperWorker(Type clsArgument, bool lastWasGenericInst)
+                {
+                    if (clsArgument.IsGenericType && (!clsArgument.IsGenericTypeDefinition || !lastWasGenericInst))
+                    {
+                        AddElementType(0x15 /* CorElementType.GenericInst */);
+
+                        AddOneArgTypeHelperWorker(clsArgument.GetGenericTypeDefinition(), true);
+
+                        var genargs = clsArgument.GetGenericArguments();
+
+                        AddData(genargs.Length);
+
+                        foreach (var t in genargs)
+                            AddOneArgTypeHelper(t);
+                    }
+                    else if (clsArgument.IsByRef)
+                    {
+                        AddElementType(0x10 /* CorElementType.ByRef */);
+                        clsArgument = clsArgument.GetElementType() ?? clsArgument;
+                        AddOneArgTypeHelper(clsArgument);
+                    }
+                    else if (clsArgument.IsPointer)
+                    {
+                        AddElementType(0x0F /* CorElementType.Ptr */);
+                        AddOneArgTypeHelper(clsArgument.GetElementType() ?? clsArgument);
+                    }
+                    else if (clsArgument.IsArray)
+                    {
 #if false
                         if (clsArgument.IsArray && clsArgument == clsArgument.GetElementType().MakeArrayType()) { // .IsSZArray unavailable.
                             AddElementType(0x1D /* CorElementType.SzArray */);
@@ -400,71 +408,165 @@ namespace MonoMod.Utils
                             AddOneArgTypeHelper(clsArgument.GetElementType());
                         } else
 #endif
-                    {
-                        AddElementType(0x14 /* CorElementType.Array */);
-
-                        AddOneArgTypeHelper(clsArgument.GetElementType() ?? clsArgument);
-
-                        // put the rank information
-                        var rank = clsArgument.GetArrayRank();
-                        AddData(rank);     // rank
-                        AddData(0);     // upper bounds
-                        AddData(rank);  // lower bound
-                        for (var i = 0; i < rank; i++)
-                            AddData(0);
-                    }
-                }
-                else
-                {
-                    // This isn't 100% accurate, but... oh well.
-                    byte type = 0; // 0 is reserved anyway.
-
-                    for (var i = 0; i < CorElementTypes.Length; i++)
-                    {
-                        if (clsArgument == CorElementTypes[i])
                         {
-                            type = (byte)i;
-                            break;
-                        }
-                    }
+                            AddElementType(0x14 /* CorElementType.Array */);
 
-                    if (type == 0)
-                    {
-                        if (clsArgument == typeof(object))
-                        {
-                            type = 0x1C /* CorElementType.Object */;
-                        }
-                        else if (clsArgument.IsValueType)
-                        {
-                            type = 0x11 /* CorElementType.ValueType */;
-                        }
-                        else
-                        {
-                            // Let's hope for the best.
-                            type = 0x12 /* CorElementType.Class */;
-                        }
-                    }
+                            AddOneArgTypeHelper(clsArgument.GetElementType() ?? clsArgument);
 
-                    if (type <= 0x0E /* CorElementType.String */ ||
-                        type == 0x16 /* CorElementType.TypedByRef */ ||
-                        type == 0x18 /* CorElementType.I */ ||
-                        type == 0x19 /* CorElementType.U */ ||
-                        type == 0x1C /* CorElementType.Object */
-                    )
-                    {
-                        AddElementType(type);
-                    }
-                    else if (clsArgument.IsValueType)
-                    {
-                        InternalAddTypeToken(tokenCreator.GetTokenForType(clsArgument), 0x11 /* CorElementType.ValueType */);
+                            // put the rank information
+                            var rank = clsArgument.GetArrayRank();
+                            AddData(rank);     // rank
+                            AddData(0);     // upper bounds
+                            AddData(rank);  // lower bound
+                            for (var i = 0; i < rank; i++)
+                                AddData(0);
+                        }
                     }
                     else
                     {
-                        InternalAddTypeToken(tokenCreator.GetTokenForType(clsArgument), 0x12 /* CorElementType.Class */);
+                        // This isn't 100% accurate, but... oh well.
+                        byte type = 0; // 0 is reserved anyway.
+
+                        for (var i = 0; i < CorElementTypes.Length; i++)
+                        {
+                            if (clsArgument == CorElementTypes[i])
+                            {
+                                type = (byte)i;
+                                break;
+                            }
+                        }
+
+                        if (type == 0)
+                        {
+                            if (clsArgument == typeof(object))
+                            {
+                                type = 0x1C /* CorElementType.Object */;
+                            }
+                            else if (clsArgument.IsValueType)
+                            {
+                                type = 0x11 /* CorElementType.ValueType */;
+                            }
+                            else
+                            {
+                                // Let's hope for the best.
+                                type = 0x12 /* CorElementType.Class */;
+                            }
+                        }
+
+                        if (type <= 0x0E /* CorElementType.String */ ||
+                            type == 0x16 /* CorElementType.TypedByRef */ ||
+                            type == 0x18 /* CorElementType.I */ ||
+                            type == 0x19 /* CorElementType.U */ ||
+                            type == 0x1C /* CorElementType.Object */
+                        )
+                        {
+                            AddElementType(type);
+                        }
+                        else if (clsArgument.IsValueType)
+                        {
+                            InternalAddTypeToken(tokenCreator.GetTokenForType(clsArgument), 0x11 /* CorElementType.ValueType */);
+                        }
+                        else
+                        {
+                            InternalAddTypeToken(tokenCreator.GetTokenForType(clsArgument), 0x12 /* CorElementType.Class */);
+                        }
                     }
                 }
             }
+        }
 
+        private sealed class MonoCallSiteEmitter : CallSiteEmitter
+        {
+            private FieldInfo SigHelper_callConv;
+            private FieldInfo SigHelper_unmanagedCallConv;
+            private FieldInfo SigHelper_arguments;
+            private FieldInfo SigHelper_modreqs;
+            private FieldInfo SigHelper_modopts;
+
+            public MonoCallSiteEmitter()
+            {
+                var callConv = typeof(SignatureHelper).GetField("callConv", BindingFlags.Instance | BindingFlags.NonPublic);
+                var unmanagedCallConv = typeof(SignatureHelper).GetField("unmanagedCallConv", BindingFlags.Instance | BindingFlags.NonPublic);
+                var arguments = typeof(SignatureHelper).GetField("arguments", BindingFlags.Instance | BindingFlags.NonPublic);
+                var modreqs = typeof(SignatureHelper).GetField("modreqs", BindingFlags.Instance | BindingFlags.NonPublic);
+                var modopts = typeof(SignatureHelper).GetField("modopts", BindingFlags.Instance | BindingFlags.NonPublic);
+
+                // if we hit this ctor, we should be running on Mono, which should mean these are all present
+                Helpers.Assert(callConv is not null);
+                Helpers.Assert(unmanagedCallConv is not null);
+                Helpers.Assert(arguments is not null);
+                Helpers.Assert(modreqs is not null);
+                Helpers.Assert(modopts is not null);
+
+                SigHelper_callConv = callConv;
+                SigHelper_unmanagedCallConv = unmanagedCallConv;
+                SigHelper_arguments = arguments;
+                SigHelper_modreqs = modreqs;
+                SigHelper_modopts = modopts;
+            }
+
+            public override void EmitCallSite(DynamicMethod dm, ILGenerator il, OpCode opcode, CallSite csite)
+            {
+                // On Mono, when its processing the tokens for a CallSite, it explicitly looks for a SignatureHelper, and so we CANNOT pass in 
+                // a manually constructed signature. At all. Which sucks. It means that, on older Mono that have half-implemented SignatureHelpers,
+                // there's nothing we can do.
+
+                var modReq = new List<Type>();
+                var modOpt = new List<Type>();
+
+                // note: with the Mono signature helper, we can't represent modifiers on the return type
+                ResolveWithModifiers(csite.ReturnType, out var rawRetType, out _, out _, modReq, modOpt);
+
+                // there's not a standard, public API for the metadata callconv field either, so we have to set it manually
+                var sigHelper = SignatureHelper.GetMethodSigHelper(CallingConventions.Standard, rawRetType);
+
+                var arguments = new Type[csite.Parameters.Count];
+                var modreqs = new Type[csite.Parameters.Count][];
+                var modopts = new Type[csite.Parameters.Count][];
+
+                var managedCallConv = csite.CallingConvention switch
+                {
+                    MethodCallingConvention.VarArg => CallingConventions.VarArgs,
+                    _ => CallingConventions.Standard,
+                };
+                if (csite.HasThis) managedCallConv |= CallingConventions.HasThis;
+                if (csite.ExplicitThis) managedCallConv |= CallingConventions.ExplicitThis;
+
+                var unmanagedCallConv = csite.CallingConvention switch
+                {
+                    MethodCallingConvention.C => CallingConvention.Cdecl,
+                    MethodCallingConvention.StdCall => CallingConvention.StdCall,
+                    MethodCallingConvention.ThisCall => CallingConvention.ThisCall,
+                    MethodCallingConvention.FastCall => CallingConvention.FastCall,
+                    _ => (CallingConvention)0,
+                };
+
+                for (var i = 0; i < csite.Parameters.Count; i++)
+                {
+                    var param = csite.Parameters[i];
+
+                    ResolveWithModifiers(param.ParameterType, out arguments[i], out modreqs[i], out modopts[i], modReq, modOpt);
+                }
+
+                // fill the signature helper
+                SigHelper_callConv.SetValue(sigHelper, managedCallConv);
+                SigHelper_unmanagedCallConv.SetValue(sigHelper, unmanagedCallConv);
+                SigHelper_arguments.SetValue(sigHelper, arguments);
+                SigHelper_modreqs.SetValue(sigHelper, modreqs);
+                SigHelper_modopts.SetValue(sigHelper, modopts);
+
+                // emit the sighelper
+                _ILGen_make_room!.Invoke(il, new object[] { 6 });
+                _ILGen_ll_emit!.Invoke(il, new object[] { opcode });
+                _ILGen_emit_int!.Invoke(il, new object[] { DynamicMethod_AddRef!(dm, sigHelper) });
+            }
+        }
+
+        private static readonly CallSiteEmitter callSiteEmitter = DynamicMethod_AddRef is not null ? new MonoCallSiteEmitter() : new NetCallSiteEmitter();
+
+        internal static void _EmitCallSite(DynamicMethod dm, ILGenerator il, OpCode opcode, CallSite csite)
+        {
+            callSiteEmitter.EmitCallSite(dm, il, opcode, csite);
         }
 
     }

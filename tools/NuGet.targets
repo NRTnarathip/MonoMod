@@ -30,7 +30,7 @@
 
   <!-- Include package readme if it exists -->
   <Choose>
-    <When Condition="'$(_PackageReadmePath)' != '' and Exists('$(_PackageReadmePath)')">
+    <When Condition="'$(_PackageReadmePath)' != '' and Exists('$(_PackageReadmePath)') and '$(IsPackable)' != 'false'">
       <PropertyGroup>
         <PackageReadmeFile>README.md</PackageReadmeFile>
       </PropertyGroup>
@@ -40,6 +40,11 @@
       </ItemGroup>
     </When>
   </Choose>
+  
+  <!-- Include the icon -->
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <PackageFile Include="$(MMRootPath)icon.png" PackagePath="%(Filename)%(Extension)" />
+  </ItemGroup>
 
   <Choose>
     <When Condition="'$(MMIncludeTFMChecks)' == 'true'">
@@ -78,6 +83,7 @@
   </Target>
 
 
+  <!--
   <Choose>
     <When Condition="'$(MMIncludeTFMChecks)' == 'true'">
       <PropertyGroup>
@@ -91,6 +97,7 @@
       <None Include="$(TargetRefPath)" Pack="true" PackFolder="ref" FrameworkSpecific="true" />
     </ItemGroup>
   </Target>
+  -->
   
 </Project>
  

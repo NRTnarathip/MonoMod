@@ -2,21 +2,19 @@
 <Project>
 
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)../'))" />
-
+  
   <PropertyGroup>
     <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
   </PropertyGroup>
     
   <ItemGroup>
-    <PackageReference Include="System.Collections.Immutable" Version="6.0.0">
-      <PrivateAssets>all;buildTransitive</PrivateAssets>
-      <ExcludeAssets>all;buildTransitive</ExcludeAssets>
-      <IncludeAssets>none</IncludeAssets>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <GeneratePathProperty>true</GeneratePathProperty>
-      <Pack>false</Pack>
-    </PackageReference>
+    <!-- Use PackageDownload to avoid some build-time hell -->
+    <PackageDownload Include="System.Collections.Immutable" Version="[6.0.0]" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <PkgSystem_Collections_Immutable>$([MSBuild]::NormalizePath('$(NuGetPackageRoot)', 'system.collections.immutable', '6.0.0'))</PkgSystem_Collections_Immutable>
+  </PropertyGroup>
 
   <UsingTask TaskName="FilterTfmsTask"
              TaskFactory="RoslynCodeTaskFactory"

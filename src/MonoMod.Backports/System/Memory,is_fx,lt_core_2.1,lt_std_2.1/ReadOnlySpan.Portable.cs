@@ -33,7 +33,7 @@ namespace System
             }
 
             _length = array.Length;
-            _pinnable = Unsafe.As<Pinnable<T>>(array);
+            _pinnable = array;
             _byteOffset = SpanHelpers.PerTypeValues<T>.ArrayAdjustment;
         }
 
@@ -63,7 +63,7 @@ namespace System
                 ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.start);
 
             _length = length;
-            _pinnable = Unsafe.As<Pinnable<T>>(array);
+            _pinnable = array;
             _byteOffset = SpanHelpers.PerTypeValues<T>.ArrayAdjustment.Add<T>(start);
         }
 
@@ -97,7 +97,7 @@ namespace System
 
         // Constructor for internal use only.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal ReadOnlySpan(Pinnable<T>? pinnable, IntPtr byteOffset, int length)
+        internal ReadOnlySpan(object? pinnable, IntPtr byteOffset, int length)
         {
             Debug.Assert(length >= 0);
 
@@ -122,10 +122,7 @@ namespace System
                 if ((uint)index >= ((uint)_length))
                     ThrowHelper.ThrowIndexOutOfRangeException();
 
-                if (_pinnable == null)
-                    unsafe { return ref Unsafe.Add<T>(ref Unsafe.AsRef<T>(_byteOffset.ToPointer()), index); }
-                else
-                    return ref Unsafe.Add<T>(ref Unsafe.AddByteOffset<T>(ref _pinnable.Data, _byteOffset), index);
+                return ref Unsafe.Add(ref DangerousGetPinnableReference(), index);
             }
         }
 
@@ -138,11 +135,7 @@ namespace System
         {
             if (_length != 0)
             {
-                if (_pinnable == null)
-                {
-                    return ref Unsafe.AsRef<T>(_byteOffset.ToPointer());
-                }
-                return ref Unsafe.AddByteOffset<T>(ref _pinnable.Data, _byteOffset);
+                return ref DangerousGetPinnableReference();
             }
             return ref Unsafe.AsRef<T>(null);
         }
@@ -205,7 +198,7 @@ namespace System
             if (typeof(T) == typeof(char))
             {
                 // If this wraps a string and represents the full length of the string, just return the wrapped string.
-                if (_byteOffset == MemoryExtensions.StringAdjustment)
+                if (_byteOffset == (nint)RuntimeHelpers.OffsetToStringData)
                 {
                     object? obj = Unsafe.As<object?>(_pinnable); // minimize chances the compilers will optimize away the 'is' check
                     if (obj is string str && _length == str.Length)
@@ -276,22 +269,15 @@ namespace System
         }
 
         /// <summary>
-        /// This method is obsolete, use System.Runtime.InteropServices.MemoryMarshal.GetReference instead.
         /// Returns a reference to the 0th element of the Span. If the Span is empty, returns a reference to the location where the 0th element
         /// would have been stored. Such a reference can be used for pinning but must never be dereferenced.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        internal ref T DangerousGetPinnableReference()
-        {
-            if (_pinnable == null)
-                unsafe { return ref Unsafe.AsRef<T>(_byteOffset.ToPointer()); }
-            else
-                return ref Unsafe.AddByteOffset<T>(ref _pinnable.Data, _byteOffset);
-        }
+        internal ref T DangerousGetPinnableReference() =>
+            ref Unsafe.AddByteOffset(ref ILHelpers.ObjectAsRef<T>(_pinnable), _byteOffset);
 
         // These expose the internal representation for Span-related apis use only.
-        internal Pinnable<T>? Pinnable => _pinnable;
+        internal object? Pinnable => _pinnable;
         internal IntPtr ByteOffset => _byteOffset;
 
         //
@@ -305,7 +291,7 @@ namespace System
         //   _pinnable   = null
         //   _byteOffset = the pointer
         //
-        private readonly Pinnable<T>? _pinnable;
+        private readonly object? _pinnable;
         private readonly IntPtr _byteOffset;
         private readonly int _length;
     }

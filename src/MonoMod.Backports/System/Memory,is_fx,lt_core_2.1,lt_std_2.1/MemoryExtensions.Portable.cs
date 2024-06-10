@@ -278,7 +278,7 @@ namespace System
             if (text == null)
                 return default;
 
-            return new ReadOnlySpan<char>(Unsafe.As<Pinnable<char>>(text), StringAdjustment, text.Length);
+            return new ReadOnlySpan<char>(text, (nint)RuntimeHelpers.OffsetToStringData, text.Length);
         }
 
         /// <summary>
@@ -302,7 +302,7 @@ namespace System
             if ((uint)start > (uint)text.Length)
                 ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.start);
 
-            return new ReadOnlySpan<char>(Unsafe.As<Pinnable<char>>(text), StringAdjustment + start * sizeof(char), text.Length - start);
+            return new ReadOnlySpan<char>(text, (nint)RuntimeHelpers.OffsetToStringData + start * sizeof(char), text.Length - start);
         }
 
         /// <summary>
@@ -327,7 +327,7 @@ namespace System
             if ((uint)start > (uint)text.Length || (uint)length > (uint)(text.Length - start))
                 ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.start);
 
-            return new ReadOnlySpan<char>(Unsafe.As<Pinnable<char>>(text), StringAdjustment + start * sizeof(char), length);
+            return new ReadOnlySpan<char>(text, (nint)RuntimeHelpers.OffsetToStringData + start * sizeof(char), length);
         }
 
         /// <summary>Creates a new <see cref="ReadOnlyMemory{T}"/> over the portion of the target string.</summary>
@@ -382,20 +382,6 @@ namespace System
                 ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.start);
 
             return new ReadOnlyMemory<char>(text, start, length);
-        }
-
-        internal static readonly nint StringAdjustment = MeasureStringAdjustment();
-
-        private static nint MeasureStringAdjustment()
-        {
-            string sampleString = "a";
-            unsafe
-            {
-                fixed (char* pSampleString = sampleString)
-                {
-                    return Unsafe.ByteOffset<char>(ref Unsafe.As<Pinnable<char>>(sampleString).Data, ref Unsafe.AsRef<char>(pSampleString));
-                }
-            }
         }
     }
 }

@@ -35,7 +35,7 @@ namespace System
                 ThrowHelper.ThrowArrayTypeMismatchException();
 
             _length = array.Length;
-            _pinnable = Unsafe.As<Pinnable<T>>(array);
+            _pinnable = array;
             _byteOffset = SpanHelpers.PerTypeValues<T>.ArrayAdjustment;
         }
 
@@ -58,7 +58,7 @@ namespace System
 
             IntPtr byteOffset = SpanHelpers.PerTypeValues<T>.ArrayAdjustment.Add<T>(start);
             int length = array.Length - start;
-            return new Span<T>(pinnable: Unsafe.As<Pinnable<T>>(array), byteOffset: byteOffset, length: length);
+            return new Span<T>(pinnable: array, byteOffset: byteOffset, length: length);
         }
 
         /// <summary>
@@ -89,7 +89,7 @@ namespace System
                 ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.start);
 
             _length = length;
-            _pinnable = Unsafe.As<Pinnable<T>>(array);
+            _pinnable = array;
             _byteOffset = SpanHelpers.PerTypeValues<T>.ArrayAdjustment.Add<T>(start);
         }
 
@@ -123,7 +123,7 @@ namespace System
 
         // Constructor for internal use only.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Span(Pinnable<T>? pinnable, IntPtr byteOffset, int length)
+        internal Span(object? pinnable, IntPtr byteOffset, int length)
         {
             Debug.Assert(length >= 0);
 
@@ -148,10 +148,7 @@ namespace System
                 if ((uint)index >= ((uint)_length))
                     ThrowHelper.ThrowIndexOutOfRangeException();
 
-                if (_pinnable == null)
-                    unsafe { return ref Unsafe.Add<T>(ref Unsafe.AsRef<T>(_byteOffset.ToPointer()), index); }
-                else
-                    return ref Unsafe.Add<T>(ref Unsafe.AddByteOffset<T>(ref _pinnable.Data, _byteOffset), index);
+                return ref Unsafe.Add(ref DangerousGetPinnableReference(), index);
             }
         }
 
@@ -160,17 +157,14 @@ namespace System
         /// It can be used for pinning and is required to support the use of span within a fixed statement.
         /// </summary>
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public unsafe ref T GetPinnableReference()
+        public ref T GetPinnableReference()
         {
             if (_length != 0)
             {
-                if (_pinnable == null)
-                {
-                    return ref Unsafe.AsRef<T>(_byteOffset.ToPointer());
-                }
-                return ref Unsafe.AddByteOffset<T>(ref _pinnable.Data, _byteOffset);
+                return ref DangerousGetPinnableReference();
             }
-            return ref Unsafe.AsRef<T>(null);
+
+            return ref Unsafe.NullRef<T>();
         }
 
         /// <summary>
@@ -195,9 +189,7 @@ namespace System
                 }
                 else
                 {
-                    ref byte b = ref Unsafe.As<T, byte>(ref Unsafe.AddByteOffset<T>(ref _pinnable.Data, _byteOffset));
-
-                    SpanHelpers.ClearLessThanPointerSized(ref b, byteLength);
+                    SpanHelpers.ClearLessThanPointerSized(ref Unsafe.As<T, byte>(ref DangerousGetPinnableReference()), byteLength);
                 }
             }
             else
@@ -232,15 +224,7 @@ namespace System
             if (Unsafe.SizeOf<T>() == 1)
             {
                 byte fill = Unsafe.As<T, byte>(ref value);
-                if (_pinnable == null)
-                {
-                    Unsafe.InitBlockUnaligned(_byteOffset.ToPointer(), fill, (uint)length);
-                }
-                else
-                {
-                    ref byte r = ref Unsafe.As<T, byte>(ref Unsafe.AddByteOffset<T>(ref _pinnable.Data, _byteOffset));
-                    Unsafe.InitBlockUnaligned(ref r, fill, (uint)length);
-                }
+                Unsafe.InitBlockUnaligned(ref Unsafe.As<T, byte>(ref DangerousGetPinnableReference()), fill, (uint)length);
             }
             else
             {
@@ -401,22 +385,15 @@ namespace System
         }
 
         /// <summary>
-        /// This method is obsolete, use System.Runtime.InteropServices.MemoryMarshal.GetReference instead.
         /// Returns a reference to the 0th element of the Span. If the Span is empty, returns a reference to the location where the 0th element
         /// would have been stored. Such a reference can be used for pinning but must never be dereferenced.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        internal ref T DangerousGetPinnableReference()
-        {
-            if (_pinnable == null)
-                unsafe { return ref Unsafe.AsRef<T>(_byteOffset.ToPointer()); }
-            else
-                return ref Unsafe.AddByteOffset<T>(ref _pinnable.Data, _byteOffset);
-        }
+        internal ref T DangerousGetPinnableReference() =>
+            ref Unsafe.AddByteOffset(ref ILHelpers.ObjectAsRef<T>(_pinnable), _byteOffset);
 
         // These expose the internal representation for Span-related apis use only.
-        internal Pinnable<T>? Pinnable => _pinnable;
+        internal object? Pinnable => _pinnable;
         internal IntPtr ByteOffset => _byteOffset;
 
         //
@@ -430,7 +407,7 @@ namespace System
         //   _pinnable   = null
         //   _byteOffset = the pointer
         //
-        private readonly Pinnable<T>? _pinnable;
+        private readonly object? _pinnable;
         private readonly IntPtr _byteOffset;
         private readonly int _length;
     }

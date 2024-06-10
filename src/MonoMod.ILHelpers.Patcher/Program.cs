@@ -1,5 +1,6 @@
 ﻿using Mono.Cecil;
 using System;
+using System.IO;
 
 [assembly: CLSCompliant(false)]
 
@@ -12,11 +13,12 @@ if (args.Length < 2)
 var assemblyPath = args[0];
 var verString = args[1];
 var output = args.Length > 2 ? args[2] : null;
+var hasSymbols = File.Exists(Path.ChangeExtension(assemblyPath, ".pdb"));
 
-using var module = ModuleDefinition.ReadModule(assemblyPath, new(ReadingMode.Deferred)
+using var module = ModuleDefinition.ReadModule(assemblyPath, new(ReadingMode.Immediate)
 {
     ReadWrite = true,
-    ReadSymbols = true,
+    ReadSymbols = hasSymbols,
 });
 if (module.RuntimeVersion == verString && output is null)
 {
@@ -27,7 +29,7 @@ if (module.RuntimeVersion == verString && output is null)
 var writerParams = new WriterParameters()
 {
     DeterministicMvid = true,
-    WriteSymbols = true,
+    WriteSymbols = hasSymbols,
     Timestamp = null,
 };
 

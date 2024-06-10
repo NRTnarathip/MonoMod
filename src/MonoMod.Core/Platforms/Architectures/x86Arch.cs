@@ -11,10 +11,11 @@ namespace MonoMod.Core.Platforms.Architectures
         public ArchitectureFeature Features => ArchitectureFeature.CreateAltEntryPoint;
 
         private BytePatternCollection? lazyKnownMethodThunks;
-        public unsafe BytePatternCollection KnownMethodThunks => Helpers.GetOrInit(ref lazyKnownMethodThunks, &CreateKnownMethodThunks);
+        public unsafe BytePatternCollection KnownMethodThunks => Helpers.GetOrInit(ref lazyKnownMethodThunks, createKnownMethodThunksFunc);
 
         public IAltEntryFactory AltEntryFactory { get; }
 
+        private static readonly Func<BytePatternCollection> createKnownMethodThunksFunc = CreateKnownMethodThunks;
         private static BytePatternCollection CreateKnownMethodThunks()
         {
             const ushort An = BytePattern.SAnyValue;
