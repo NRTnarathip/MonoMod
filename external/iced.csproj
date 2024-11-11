@@ -7,6 +7,8 @@
     <SkipGlobalAnalyzerConfigForPackage>true</SkipGlobalAnalyzerConfigForPackage>
 
     <IsPackable>false</IsPackable>
+
+    <Platforms>AnyCPU;ARM64</Platforms>
   </PropertyGroup>
 
   <!-- NOTE: We set the assembly name in iced.targets, which is imported BeforeTargetFrameworkInferenceTargets. -->

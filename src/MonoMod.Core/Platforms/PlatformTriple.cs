@@ -89,7 +89,7 @@ namespace MonoMod.Core.Platforms
             {
                 OSKind.Posix => throw new NotImplementedException(),
                 OSKind.Linux => new Systems.LinuxSystem(),
-                OSKind.Android => throw new NotImplementedException(),
+                OSKind.Android => new Systems.AndroidSystem(),
                 OSKind.OSX => new Systems.MacOSSystem(),
                 OSKind.IOS => throw new NotImplementedException(),
                 OSKind.BSD => throw new NotImplementedException(),
@@ -202,10 +202,13 @@ namespace MonoMod.Core.Platforms
 
         private void InitIfNeeded(object obj)
         {
+            Console.WriteLine("InitIfNeeded(); obj: " + obj);
             (obj as IInitialize<ISystem>)?.Initialize(System);
             (obj as IInitialize<IArchitecture>)?.Initialize(Architecture);
             (obj as IInitialize<IRuntime>)?.Initialize(Runtime);
             (obj as IInitialize<PlatformTriple>)?.Initialize(this);
+            var objInit = obj as IInitialize;
+            Console.WriteLine("objInit: " + objInit);
             (obj as IInitialize)?.Initialize();
         }
 
@@ -492,7 +495,7 @@ namespace MonoMod.Core.Platforms
             }
         }
 
-        private static object DEBUG_FILE_LOCK = new ();
+        private static object DEBUG_FILE_LOCK = new();
         private static bool FIRST_TIME_DEBUG_WRITE = true;
 
         private unsafe IntPtr GetNativeMethodBodyWalk(MethodBase method, bool reloadPtr)
@@ -576,20 +579,20 @@ namespace MonoMod.Core.Platforms
                     goto ReloadFuncPtr;
                 }
             } while (true);
-            
+
             // lock (DEBUG_FILE_LOCK) {
             //     var readableLen = System.GetSizeOfReadableMemory(entry, 32);
             //     var span = new ReadOnlySpan<byte>((void*)entry, (int)Math.Min(readableLen, 48));
 
             //     using var file = new StreamWriter("detours_debug.txt", append: !FIRST_TIME_DEBUG_WRITE);
-                
+
             //     file.WriteLine();
             //     file.WriteLine(method.Name);
             //     file.WriteLine(iters);
             //     file.WriteLine(entry);
             //     file.WriteLine(span.IsEmpty ? "00000000" : Convert.ToHexString(span));
             //     file.WriteLine();
-                
+
             //     file.Flush();
             //     FIRST_TIME_DEBUG_WRITE = false;
             // }

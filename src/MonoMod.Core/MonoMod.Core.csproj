@@ -18,6 +18,8 @@
     <MMIncludeTFMChecks>true</MMIncludeTFMChecks>
 
     <NoWarn>$([String]::Copy('$(NoWarn)').Replace(';CS1591', '')</NoWarn>
+
+    <Platforms>AnyCPU;ARM64</Platforms>
   </PropertyGroup>
   
   <ItemGroup>

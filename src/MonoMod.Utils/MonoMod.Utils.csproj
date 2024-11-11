@@ -11,6 +11,7 @@
 
     <VersionPrefix>25.0.6</VersionPrefix>
     <PackageValidationBaselineVersion>25.0.0</PackageValidationBaselineVersion>
+    <Platforms>AnyCPU;ARM64</Platforms>
   </PropertyGroup>
   
   <!-- Dependencies -->

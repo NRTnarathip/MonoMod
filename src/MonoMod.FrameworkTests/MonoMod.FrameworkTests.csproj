@@ -6,6 +6,8 @@
     <TargetFrameworks>$(TargetFrameworks);netcoreapp3.1</TargetFrameworks>
 
     <NoWarn>$(NoWarn);CA1303</NoWarn>
+
+    <Platforms>AnyCPU;ARM64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>

@@ -535,8 +535,10 @@ namespace MonoMod.Utils
                 }
                 else if (fxDesc.StartsWith(Net5Plus, StringComparison.Ordinal))
                 {
-                    runtime = RuntimeKind.CoreCLR;
+                    //runtime = RuntimeKind.CoreCLR; //originall
                     prefixLength = Net5Plus.Length;
+                    // There is such a thing as .NET Mono in dotnet/runtime, which reports identically to CoreCLR. It also uses the same BCL.
+                    runtime = isMono ? RuntimeKind.Mono : RuntimeKind.CoreCLR;
                 }
                 else
                 {
